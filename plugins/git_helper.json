@@ -1,0 +1,30 @@
+{
+  "name": "git-helper",
+  "description": "Small git convenience plugin for personal local workflows",
+  "commands": [
+    {
+      "name": "git-status",
+      "description": "Run git status --short --branch",
+      "action": {
+        "type": "shell",
+        "command": "git status --short --branch",
+        "timeout": 20
+      }
+    }
+  ],
+  "tools": [
+    {
+      "name": "git_status_tool",
+      "description": "Return git status output for the current workspace",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "action": {
+        "type": "shell",
+        "command": "git status --short --branch",
+        "timeout": 20
+      }
+    }
+  ]
+}

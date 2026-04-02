@@ -1,0 +1,64 @@
+{
+  "name": "note-helper",
+  "description": "Tiny note helper plugin",
+  "commands": [
+    {
+      "name": "note-template",
+      "description": "Print a reusable note template",
+      "action": {
+        "type": "template_response",
+        "template": "TODO\\n- context: {args_joined}\\n- next step: \\n- risks: "
+      }
+    }
+  ],
+  "hooks": {
+    "after_command": [
+      {
+        "name": "note-helper-audit",
+        "action": {
+          "type": "template_response",
+          "template": "hook observed command: {raw}"
+        }
+      }
+    ]
+  },
+  "workflows": [
+    {
+      "name": "capture-note",
+      "steps": [
+        {
+          "name": "template",
+          "action": {
+            "type": "template_response",
+            "template": "Captured workflow note for: {args_joined}"
+          }
+        },
+        {
+          "name": "remember",
+          "action": {
+            "type": "memory_add",
+            "text": "workflow:{args_joined}"
+          }
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "note_template_tool",
+      "description": "Generate a small note template from JSON args",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string"
+          }
+        }
+      },
+      "action": {
+        "type": "template_response",
+        "template": "Topic: {topic}\\nChecklist:\\n- capture requirements\\n- inspect code\\n- verify result"
+      }
+    }
+  ]
+}

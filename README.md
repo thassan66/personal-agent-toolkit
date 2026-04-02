@@ -15,8 +15,26 @@
 Personal Agent Toolkit is an independent, generic personal-agent toolkit for local automation.
 It is structured to be publishable as its own GitHub repository.
 
-> Package name: `indie_agent_kit`  
-> CLI command: `indie-agent-kit`
+> Package name: `personal_agent_toolkit`  
+> CLI command: `personal-agent-toolkit`
+
+## Open-source and collaboration friendly
+
+This repository is intended to be open source and welcoming for:
+
+- personal use
+- collaborative enhancement
+- research experiments
+- independent extensions and plugins
+
+The project currently uses the **MIT License**, which is permissive and suitable for open collaboration.
+
+Related docs:
+
+- [LICENSE](LICENSE)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [SECURITY.md](SECURITY.md)
 
 ## Important publishing notes
 
@@ -46,14 +64,97 @@ pip install -e .
 ## Run
 
 ```bash
-python -m indie_agent_kit
+python -m personal_agent_toolkit
 ```
 
 Single prompt:
 
 ```bash
-python -m indie_agent_kit --prompt "/help"
+python -m personal_agent_toolkit --prompt "/help"
 ```
+
+## Model and provider configuration
+
+Yes — you can use this toolkit with different LLMs.
+
+### What is supported right now
+
+The current runtime supports:
+
+- `echo` provider for testing
+- any **OpenAI-compatible chat completions API**
+
+That means you can use:
+
+- local models served behind an OpenAI-compatible endpoint
+- hosted models exposed through an OpenAI-compatible gateway
+- any provider that accepts `POST /chat/completions` in OpenAI-style format
+
+### Current limitation
+
+There is **not** a native Anthropic/Claude provider in the code right now.
+
+So for Claude, you need one of these:
+
+- an OpenAI-compatible gateway/proxy that routes to Claude
+- a hosted platform exposing Claude through an OpenAI-compatible API surface
+
+### Environment variables
+
+The runtime reads these variables:
+
+```bash
+PERSONAL_AGENT_TOOLKIT_PROVIDER
+PERSONAL_AGENT_TOOLKIT_BASE_URL
+PERSONAL_AGENT_TOOLKIT_API_KEY
+PERSONAL_AGENT_TOOLKIT_MODEL
+PERSONAL_AGENT_TOOLKIT_TIMEOUT
+PERSONAL_AGENT_TOOLKIT_DEBUG
+```
+
+### Provider values
+
+Use:
+
+```bash
+PERSONAL_AGENT_TOOLKIT_PROVIDER=echo
+```
+
+or
+
+```bash
+PERSONAL_AGENT_TOOLKIT_PROVIDER=openai
+```
+
+### Example: local OpenAI-compatible server
+
+```bash
+set PERSONAL_AGENT_TOOLKIT_PROVIDER=openai
+set PERSONAL_AGENT_TOOLKIT_BASE_URL=http://localhost:11434/v1
+set PERSONAL_AGENT_TOOLKIT_API_KEY=dummy
+set PERSONAL_AGENT_TOOLKIT_MODEL=qwen2.5-coder
+python -m personal_agent_toolkit
+```
+
+### Example: one-off model override
+
+```bash
+python -m personal_agent_toolkit --model qwen2.5-coder
+```
+
+### Example: debug mode
+
+```bash
+set PERSONAL_AGENT_TOOLKIT_DEBUG=1
+python -m personal_agent_toolkit
+```
+
+### Practical guidance
+
+- use `echo` first to confirm the runtime works
+- switch to `openai` once your endpoint is ready
+- pass the model with `PERSONAL_AGENT_TOOLKIT_MODEL` or `--model`
+- if tools do not work with a provider, confirm the provider supports OpenAI-style tool calling
 
 ## Key commands
 
@@ -89,9 +190,19 @@ Before pushing to GitHub:
 - review sample prompts/plugin text for naming you do not want public
 - choose the license you want to publish under
 
+## Collaboration notes
+
+If you publish this repo on GitHub, recommended next steps are:
+
+- enable Issues
+- enable Discussions
+- protect the default branch
+- require pull requests for non-trivial changes
+- add CI once the repo is public
+
 ## Verification
 
 ```bash
 python -m unittest discover -s tests -v
-python -m compileall indie_agent_kit
+python -m compileall personal_agent_toolkit
 ```

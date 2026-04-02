@@ -1,0 +1,27 @@
+{
+  "name": "workspace-docs",
+  "description": "Local documentation resources for Personal Agent Toolkit",
+  "resources": [
+    {
+      "uri": "workspace://readme",
+      "name": "README",
+      "description": "Project README",
+      "kind": "file",
+      "path": "README.md"
+    },
+    {
+      "uri": "workspace://legal",
+      "name": "Legal and Privacy Notes",
+      "description": "Repository publishing and privacy checklist",
+      "kind": "file",
+      "path": "LEGAL_AND_PRIVACY.md"
+    },
+    {
+      "uri": "workspace://about",
+      "name": "About",
+      "description": "Short registry description",
+      "kind": "text",
+      "content": "This local MCP-style registry exposes project documentation as structured resources."
+    }
+  ]
+}
