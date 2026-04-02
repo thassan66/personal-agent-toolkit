@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "indie-agent-kit"
+version = "0.1.0"
+description = "Independent personal agent toolkit for local automation"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Taimoor Hassan" }]
+dependencies = []
+
+[project.scripts]
+indie-agent-kit = "indie_agent_kit.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["indie_agent_kit*"]

@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.indie_agent_kit_memory.jsonl
+.indie_agent_kit_plan.json
+.DS_Store
