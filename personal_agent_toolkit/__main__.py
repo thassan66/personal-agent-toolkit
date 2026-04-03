@@ -13,7 +13,7 @@ from .core.memory import MemoryStore
 from .core.mcp import LocalMcpRegistry
 from .core.planning import PlanStore
 from .core.plugins import PluginManager
-from .core.providers import EchoProvider, OpenAICompatibleProvider
+from .core.providers import AnthropicProvider, EchoProvider, OpenAICompatibleProvider
 from .core.query_engine import QueryEngine
 from .core.skills import SkillRegistry
 from .core.tasks import TaskManager
@@ -22,12 +22,25 @@ from .core.tools import ToolRegistry
 
 def create_provider() -> object:
     provider_name = os.getenv("PERSONAL_AGENT_TOOLKIT_PROVIDER", "echo").strip().lower()
+    api_key = os.getenv("PERSONAL_AGENT_TOOLKIT_API_KEY", "")
+    base_url = os.getenv("PERSONAL_AGENT_TOOLKIT_BASE_URL", "")
+    timeout = float(os.getenv("PERSONAL_AGENT_TOOLKIT_TIMEOUT", "120"))
+
+    if provider_name in {"anthropic", "claude"}:
+        return AnthropicProvider(
+            base_url=base_url or "https://api.anthropic.com/v1",
+            api_key=api_key or os.getenv("ANTHROPIC_API_KEY", ""),
+            timeout=timeout,
+            anthropic_version=os.getenv("PERSONAL_AGENT_TOOLKIT_ANTHROPIC_VERSION", "2023-06-01"),
+            max_tokens=int(os.getenv("PERSONAL_AGENT_TOOLKIT_MAX_TOKENS", "4096")),
+        )
+
     if provider_name in {"openai", "openai-compatible", "openai_compatible"}:
         return OpenAICompatibleProvider(
-            base_url=os.getenv("PERSONAL_AGENT_TOOLKIT_BASE_URL", "http://localhost:11434/v1"),
-            api_key=os.getenv("PERSONAL_AGENT_TOOLKIT_API_KEY", "dummy"),
-            timeout=float(os.getenv("PERSONAL_AGENT_TOOLKIT_TIMEOUT", "120")),
-    )
+            base_url=base_url or "http://localhost:11434/v1",
+            api_key=api_key or "dummy",
+            timeout=timeout,
+        )
     return EchoProvider()
 
 

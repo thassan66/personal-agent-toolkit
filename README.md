@@ -35,6 +35,9 @@ Related docs:
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - [SECURITY.md](SECURITY.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [ROADMAP.md](ROADMAP.md)
+- [CHANGELOG.md](CHANGELOG.md)
 
 ## Important publishing notes
 
@@ -52,6 +55,24 @@ Related docs:
 - persistent notes and plans
 - markdown-based skills
 - in-process delegate/spawn/wait subagents
+
+## Repository layout
+
+```text
+personal-agent-toolkit/
+├─ personal_agent_toolkit/
+│  ├─ agents/
+│  └─ core/
+├─ plugins/
+├─ mcp_servers/
+├─ skills/
+├─ tests/
+├─ README.md
+├─ ARCHITECTURE.md
+├─ ROADMAP.md
+├─ CHANGELOG.md
+└─ pyproject.toml
+```
 
 ## Install
 
@@ -73,31 +94,30 @@ Single prompt:
 python -m personal_agent_toolkit --prompt "/help"
 ```
 
-## Model and provider configuration
+## Model, provider, and agent configuration
 
-Yes — you can use this toolkit with different LLMs.
+Yes - you can use this toolkit with different models.
 
 ### What is supported right now
 
 The current runtime supports:
 
-- `echo` provider for testing
+- `echo` for local smoke testing
+- native `anthropic` / `claude` provider
 - any **OpenAI-compatible chat completions API**
 
-That means you can use:
+That means you can connect the toolkit to:
 
-- local models served behind an OpenAI-compatible endpoint
-- hosted models exposed through an OpenAI-compatible gateway
-- any provider that accepts `POST /chat/completions` in OpenAI-style format
+- Anthropic Claude through the native Messages API
+- local model servers such as Ollama
+- hosted OpenAI-compatible gateways
+- proxy layers that expose non-OpenAI models through `/chat/completions`
 
-### Current limitation
+### Claude and other non-OpenAI models
 
-There is **not** a native Anthropic/Claude provider in the code right now.
+Claude is now supported natively through the Anthropic Messages API.
 
-So for Claude, you need one of these:
-
-- an OpenAI-compatible gateway/proxy that routes to Claude
-- a hosted platform exposing Claude through an OpenAI-compatible API surface
+Other models still work well if they are served through an OpenAI-compatible endpoint.
 
 ### Environment variables
 
@@ -110,51 +130,126 @@ PERSONAL_AGENT_TOOLKIT_API_KEY
 PERSONAL_AGENT_TOOLKIT_MODEL
 PERSONAL_AGENT_TOOLKIT_TIMEOUT
 PERSONAL_AGENT_TOOLKIT_DEBUG
+PERSONAL_AGENT_TOOLKIT_ANTHROPIC_VERSION
+PERSONAL_AGENT_TOOLKIT_MAX_TOKENS
 ```
 
-### Provider values
+Supported provider values:
 
-Use:
+- `echo`
+- `anthropic`
+- `claude`
+- `openai`
+- `openai-compatible`
 
-```bash
-PERSONAL_AGENT_TOOLKIT_PROVIDER=echo
+### Example: connect to Anthropic Claude natively
+
+PowerShell:
+
+```powershell
+$env:PERSONAL_AGENT_TOOLKIT_PROVIDER="anthropic"
+$env:PERSONAL_AGENT_TOOLKIT_API_KEY="your-anthropic-api-key"
+$env:PERSONAL_AGENT_TOOLKIT_MODEL="claude-sonnet-4-5"
+python -m personal_agent_toolkit
 ```
 
-or
+CMD:
 
-```bash
-PERSONAL_AGENT_TOOLKIT_PROVIDER=openai
+```bat
+set PERSONAL_AGENT_TOOLKIT_PROVIDER=anthropic
+set PERSONAL_AGENT_TOOLKIT_API_KEY=your-anthropic-api-key
+set PERSONAL_AGENT_TOOLKIT_MODEL=claude-sonnet-4-5
+python -m personal_agent_toolkit
 ```
 
-### Example: local OpenAI-compatible server
+Optional:
 
-```bash
-set PERSONAL_AGENT_TOOLKIT_PROVIDER=openai
+```powershell
+$env:PERSONAL_AGENT_TOOLKIT_ANTHROPIC_VERSION="2023-06-01"
+$env:PERSONAL_AGENT_TOOLKIT_MAX_TOKENS="4096"
+```
+
+### Example: connect to an OpenAI-compatible endpoint
+
+PowerShell:
+
+```powershell
+$env:PERSONAL_AGENT_TOOLKIT_PROVIDER="openai-compatible"
+$env:PERSONAL_AGENT_TOOLKIT_BASE_URL="http://localhost:11434/v1"
+$env:PERSONAL_AGENT_TOOLKIT_API_KEY="dummy"
+$env:PERSONAL_AGENT_TOOLKIT_MODEL="your-model-name"
+python -m personal_agent_toolkit
+```
+
+CMD:
+
+```bat
+set PERSONAL_AGENT_TOOLKIT_PROVIDER=openai-compatible
 set PERSONAL_AGENT_TOOLKIT_BASE_URL=http://localhost:11434/v1
 set PERSONAL_AGENT_TOOLKIT_API_KEY=dummy
-set PERSONAL_AGENT_TOOLKIT_MODEL=qwen2.5-coder
+set PERSONAL_AGENT_TOOLKIT_MODEL=your-model-name
 python -m personal_agent_toolkit
 ```
 
-### Example: one-off model override
+### One-off model override
 
 ```bash
-python -m personal_agent_toolkit --model qwen2.5-coder
+python -m personal_agent_toolkit --model your-model-name
 ```
 
-### Example: debug mode
+### Change the active model or agent in the REPL
 
-```bash
-set PERSONAL_AGENT_TOOLKIT_DEBUG=1
-python -m personal_agent_toolkit
+These runtime commands are built in:
+
+- `/agents` - list available agent profiles
+- `/agent <name>` - switch to a profile such as `coder`, `planner`, or `reviewer`
+- `/model` - show the current model
+- `/model <name>` - switch models without restarting
+
+Example:
+
+```text
+/agents
+/agent coder
+/model your-model-name
 ```
+
+### Customize agent profiles
+
+Agent profiles live in `personal_agent_toolkit/agents/*.json`.
+Each profile can set:
+
+- `name`
+- `description`
+- `model`
+- `system_prompt`
+
+Example:
+
+```json
+{
+  "name": "claude-coder",
+  "description": "Coding agent routed through a Claude-compatible gateway",
+  "model": "your-claude-compatible-model-name",
+  "system_prompt": "You are a coding-focused personal agent. Prefer concrete code changes and clear summaries."
+}
+```
+
+After adding the file, start the CLI and run:
+
+```text
+/agent claude-coder
+```
+
+This is the easiest way to keep different prompts and default models for different task types.
 
 ### Practical guidance
 
-- use `echo` first to confirm the runtime works
-- switch to `openai` once your endpoint is ready
-- pass the model with `PERSONAL_AGENT_TOOLKIT_MODEL` or `--model`
-- if tools do not work with a provider, confirm the provider supports OpenAI-style tool calling
+- start with `echo` to confirm the runtime works
+- use `anthropic` for native Claude access
+- use `openai-compatible` for local gateways and compatible providers
+- set a default with `PERSONAL_AGENT_TOOLKIT_MODEL` and override per session with `--model` or `/model`
+- if tool calling fails, verify that your endpoint supports the required tool-calling format for that provider
 
 ## Key commands
 
@@ -172,6 +267,9 @@ python -m personal_agent_toolkit
 - `/skills`
 - `/skill <name>`
 - `/skill-show <name>`
+- `/agents`
+- `/agent <name>`
+- `/model [name]`
 - `/search <query>`
 - `/plan`
 - `/plan-set <title>`
@@ -199,6 +297,12 @@ If you publish this repo on GitHub, recommended next steps are:
 - protect the default branch
 - require pull requests for non-trivial changes
 - add CI once the repo is public
+
+This repository now includes:
+
+- GitHub Actions CI
+- issue templates
+- pull request template
 
 ## Verification
 

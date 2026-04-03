@@ -6,7 +6,7 @@ from .core.memory import MemoryStore
 from .core.mcp import LocalMcpRegistry
 from .core.planning import PlanStore
 from .core.plugins import PluginManager
-from .core.providers import EchoProvider, OpenAICompatibleProvider
+from .core.providers import AnthropicProvider, EchoProvider, OpenAICompatibleProvider
 from .core.query_engine import QueryEngine
 from .core.skills import SkillRegistry
 from .core.tasks import TaskManager, TaskState, TaskStatus, TaskType
@@ -15,6 +15,7 @@ from .core.tools import Tool, ToolRegistry, ToolUseContext
 __all__ = [
     "AgentDefinition",
     "AgentRegistry",
+    "AnthropicProvider",
     "Command",
     "CommandRegistry",
     "EchoProvider",

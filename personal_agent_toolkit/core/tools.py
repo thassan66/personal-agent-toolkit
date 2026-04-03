@@ -60,6 +60,16 @@ class ToolRegistry:
             for tool in self.list()
         ]
 
+    def as_anthropic_tools(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": tool.input_schema,
+            }
+            for tool in self.list()
+        ]
+
     async def invoke(
         self, name: str, payload: Dict[str, Any], ctx: ToolUseContext
     ) -> Dict[str, Any]:
