@@ -1,0 +1,44 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="640" rx="28" fill="#0B1020"/>
+  <rect x="24" y="24" width="1232" height="592" rx="22" fill="url(#bg)"/>
+  <circle cx="1060" cy="140" r="160" fill="#1D4ED8" fill-opacity="0.18"/>
+  <circle cx="1140" cy="460" r="220" fill="#10B981" fill-opacity="0.14"/>
+  <circle cx="220" cy="120" r="120" fill="#F59E0B" fill-opacity="0.10"/>
+
+  <text x="92" y="190" fill="#E5E7EB" font-family="Segoe UI, Arial, sans-serif" font-size="66" font-weight="700">
+    Personal Agent Toolkit
+  </text>
+  <text x="92" y="252" fill="#93C5FD" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="600">
+    Local-first Python agents with Claude, workflows, memory, planning, and plugins
+  </text>
+
+  <rect x="92" y="320" width="170" height="52" rx="14" fill="#111827"/>
+  <text x="118" y="354" fill="#60A5FA" font-family="Consolas, monospace" font-size="24">Claude</text>
+
+  <rect x="278" y="320" width="214" height="52" rx="14" fill="#111827"/>
+  <text x="304" y="354" fill="#34D399" font-family="Consolas, monospace" font-size="24">OpenAI-compatible</text>
+
+  <rect x="508" y="320" width="126" height="52" rx="14" fill="#111827"/>
+  <text x="534" y="354" fill="#FBBF24" font-family="Consolas, monospace" font-size="24">Plugins</text>
+
+  <rect x="650" y="320" width="148" height="52" rx="14" fill="#111827"/>
+  <text x="676" y="354" fill="#C084FC" font-family="Consolas, monospace" font-size="24">Workflows</text>
+
+  <rect x="814" y="320" width="128" height="52" rx="14" fill="#111827"/>
+  <text x="840" y="354" fill="#F9A8D4" font-family="Consolas, monospace" font-size="24">Memory</text>
+
+  <rect x="958" y="320" width="112" height="52" rx="14" fill="#111827"/>
+  <text x="984" y="354" fill="#A7F3D0" font-family="Consolas, monospace" font-size="24">Plans</text>
+
+  <rect x="92" y="430" width="700" height="118" rx="20" fill="#0F172A" fill-opacity="0.88" stroke="#334155"/>
+  <text x="122" y="475" fill="#E5E7EB" font-family="Consolas, monospace" font-size="24">/agent coder</text>
+  <text x="122" y="510" fill="#E5E7EB" font-family="Consolas, monospace" font-size="24">/plan-set Ship public release</text>
+  <text x="122" y="545" fill="#E5E7EB" font-family="Consolas, monospace" font-size="24">/workflow capture-note launch-checklist</text>
+
+  <defs>
+    <linearGradient id="bg" x1="44" y1="40" x2="1230" y2="610" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111827"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+</svg>
