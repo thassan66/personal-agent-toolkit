@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/banner.svg" alt="Personal Agent Toolkit banner" width="100%" />
+
 # Personal Agent Toolkit
 
 **A local-first Python toolkit for building and running personal coding agents**
