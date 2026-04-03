@@ -110,9 +110,7 @@ python -m personal_agent_toolkit
 
 ### Demo 1 — startup and command flow
 
-> Replace this with a GIF or screenshot:
->
-> `docs/demo-startup.gif`
+![Demo: startup and command flow](docs/demo-startup.gif)
 
 Suggested capture:
 
@@ -125,9 +123,7 @@ Suggested capture:
 
 ### Demo 2 — workflow + memory
 
-> Replace this with a GIF or screenshot:
->
-> `docs/demo-workflow-memory.gif`
+![Demo: workflow and memory](docs/demo-workflow-memory.gif)
 
 Suggested capture:
 
@@ -139,9 +135,7 @@ Suggested capture:
 
 ### Demo 3 — file automation
 
-> Replace this with a GIF or screenshot:
->
-> `docs/demo-editing.gif`
+![Demo: file automation](docs/demo-editing.gif)
 
 Suggested capture:
 
