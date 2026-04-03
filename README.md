@@ -2,7 +2,7 @@
 
 # Personal Agent Toolkit
 
-**A local-first toolkit for building and running personal coding agents**
+**A local-first Python toolkit for building and running personal coding agents**
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -10,118 +10,169 @@
 ![Scope](https://img.shields.io/badge/scope-local--first-orange)
 ![Status](https://img.shields.io/badge/status-public--ready-success)
 
+**Claude-native + OpenAI-compatible + plugins + workflows + planning + memory**
+
 </div>
 
-Personal Agent Toolkit is an independent, generic personal-agent toolkit for local automation.
-It is structured to be publishable as its own GitHub repository.
+---
 
-> Package name: `personal_agent_toolkit`  
-> CLI command: `personal-agent-toolkit`
+## Why this project exists
 
-## Open-source and collaboration friendly
+Most agent frameworks are either:
 
-This repository is intended to be open source and welcoming for:
+- too heavyweight for personal workflows
+- too coupled to one model provider
+- too hard to customize locally
+- too opaque when you want to inspect what the agent is doing
 
-- personal use
-- collaborative enhancement
-- research experiments
-- independent extensions and plugins
+**Personal Agent Toolkit** exists to give you a simpler path:
 
-The project currently uses the **MIT License**, which is permissive and suitable for open collaboration.
+- a **local-first** runtime
+- a **Python-native** codebase
+- support for **Claude** and **OpenAI-compatible models**
+- built-in **plugins**, **skills**, **memory**, **planning**, and **subagents**
+- an architecture you can actually read, fork, and extend
 
-Related docs:
+If you want a repo that is useful for **personal use**, **research**, or **open-source collaboration**, this is the goal.
 
-- [LICENSE](LICENSE)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-- [SECURITY.md](SECURITY.md)
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [ROADMAP.md](ROADMAP.md)
-- [CHANGELOG.md](CHANGELOG.md)
+---
 
-## Important publishing notes
+## Why it matters
 
-- This repository is intentionally branded with neutral names.
-- The exported package does **not** include the mirrored upstream stub tree.
-- It is presented as an independent implementation for local agent workflows.
-- Review names, prompts, and sample assets again before publishing if you want stricter branding separation.
+### 1. Local-first by default
 
-## Features
+Your workflows, notes, plans, skills, and plugins live in the repo and on your machine first.
 
-- local CLI/REPL agent runtime
-- tools for file operations, shell execution, search, diffs, and patch previews
-- lightweight plugins and workflows
-- lightweight local MCP-style resources
-- persistent notes and plans
-- markdown-based skills
-- in-process delegate/spawn/wait subagents
+That makes the toolkit easier to:
 
-## Repository layout
+- understand
+- debug
+- customize
+- trust for day-to-day use
 
-```text
-personal-agent-toolkit/
-├─ personal_agent_toolkit/
-│  ├─ agents/
-│  └─ core/
-├─ plugins/
-├─ mcp_servers/
-├─ skills/
-├─ tests/
-├─ README.md
-├─ ARCHITECTURE.md
-├─ ROADMAP.md
-├─ CHANGELOG.md
-└─ pyproject.toml
-```
+### 2. Works with Claude and other LLMs
 
-## Install
+You can run:
+
+- native Anthropic / Claude
+- OpenAI-compatible backends
+- local model gateways
+
+That means you are not locked into one vendor or one serving stack.
+
+### 3. Built for extension
+
+The project includes:
+
+- plugin manifests
+- workflow execution
+- skill prompts
+- MCP-style local resource registry
+- planning and memory
+
+So you can evolve it into your own personal agent environment instead of treating it like a black box.
+
+### 4. Open-source friendly
+
+The repository includes:
+
+- MIT license
+- contributing guide
+- code of conduct
+- security policy
+- CI
+- issue and PR templates
+
+So it is ready for public iteration, collaboration, and research use.
+
+---
+
+## Quickstart
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
+python -m personal_agent_toolkit --prompt "/help"
 ```
 
-## Run
+Interactive mode:
 
 ```bash
 python -m personal_agent_toolkit
 ```
 
-Single prompt:
+---
 
-```bash
-python -m personal_agent_toolkit --prompt "/help"
-```
+## Demo
 
-## Model, provider, and agent configuration
+### Demo 1 — startup and command flow
 
-Yes - you can use this toolkit with different models.
+> Replace this with a GIF or screenshot:
+>
+> `docs/demo-startup.gif`
 
-### What is supported right now
+Suggested capture:
 
-The current runtime supports:
+- start the CLI
+- run `/agents`
+- switch with `/agent coder`
+- set a plan with `/plan-set`
 
-- `echo` for local smoke testing
-- native `anthropic` / `claude` provider
-- any **OpenAI-compatible chat completions API**
+---
 
-That means you can connect the toolkit to:
+### Demo 2 — workflow + memory
 
-- Anthropic Claude through the native Messages API
-- local model servers such as Ollama
-- hosted OpenAI-compatible gateways
-- proxy layers that expose non-OpenAI models through `/chat/completions`
+> Replace this with a GIF or screenshot:
+>
+> `docs/demo-workflow-memory.gif`
 
-### Claude and other non-OpenAI models
+Suggested capture:
 
-Claude is now supported natively through the Anthropic Messages API.
+- run `/workflow capture-note release-checklist`
+- run `/memory`
+- run `/memory-search release`
 
-Other models still work well if they are served through an OpenAI-compatible endpoint.
+---
+
+### Demo 3 — file automation
+
+> Replace this with a GIF or screenshot:
+>
+> `docs/demo-editing.gif`
+
+Suggested capture:
+
+- `/grep TODO .`
+- `/patch-preview ...`
+- `/replace-block ...`
+- `/diff ...`
+
+---
+
+## Core capabilities
+
+- local CLI/REPL agent runtime
+- native Anthropic / Claude support
+- OpenAI-compatible provider support
+- file operations, shell execution, grep, glob, diff, patch previews
+- persistent notes and planning
+- markdown-based skills
+- lightweight plugins and workflows
+- local MCP-style resource registry
+- delegate / spawn / wait subagent flows
+
+---
+
+## Model and provider configuration
+
+The runtime currently supports:
+
+- `echo` for smoke testing
+- `anthropic` / `claude` for native Claude access
+- `openai` / `openai-compatible` for OpenAI-style endpoints
 
 ### Environment variables
-
-The runtime reads these variables:
 
 ```bash
 PERSONAL_AGENT_TOOLKIT_PROVIDER
@@ -134,17 +185,7 @@ PERSONAL_AGENT_TOOLKIT_ANTHROPIC_VERSION
 PERSONAL_AGENT_TOOLKIT_MAX_TOKENS
 ```
 
-Supported provider values:
-
-- `echo`
-- `anthropic`
-- `claude`
-- `openai`
-- `openai-compatible`
-
-### Example: connect to Anthropic Claude natively
-
-PowerShell:
+### Native Claude example
 
 ```powershell
 $env:PERSONAL_AGENT_TOOLKIT_PROVIDER="anthropic"
@@ -153,25 +194,7 @@ $env:PERSONAL_AGENT_TOOLKIT_MODEL="claude-sonnet-4-5"
 python -m personal_agent_toolkit
 ```
 
-CMD:
-
-```bat
-set PERSONAL_AGENT_TOOLKIT_PROVIDER=anthropic
-set PERSONAL_AGENT_TOOLKIT_API_KEY=your-anthropic-api-key
-set PERSONAL_AGENT_TOOLKIT_MODEL=claude-sonnet-4-5
-python -m personal_agent_toolkit
-```
-
-Optional:
-
-```powershell
-$env:PERSONAL_AGENT_TOOLKIT_ANTHROPIC_VERSION="2023-06-01"
-$env:PERSONAL_AGENT_TOOLKIT_MAX_TOKENS="4096"
-```
-
-### Example: connect to an OpenAI-compatible endpoint
-
-PowerShell:
+### OpenAI-compatible example
 
 ```powershell
 $env:PERSONAL_AGENT_TOOLKIT_PROVIDER="openai-compatible"
@@ -181,75 +204,27 @@ $env:PERSONAL_AGENT_TOOLKIT_MODEL="your-model-name"
 python -m personal_agent_toolkit
 ```
 
-CMD:
-
-```bat
-set PERSONAL_AGENT_TOOLKIT_PROVIDER=openai-compatible
-set PERSONAL_AGENT_TOOLKIT_BASE_URL=http://localhost:11434/v1
-set PERSONAL_AGENT_TOOLKIT_API_KEY=dummy
-set PERSONAL_AGENT_TOOLKIT_MODEL=your-model-name
-python -m personal_agent_toolkit
-```
-
 ### One-off model override
 
 ```bash
 python -m personal_agent_toolkit --model your-model-name
 ```
 
-### Change the active model or agent in the REPL
+---
 
-These runtime commands are built in:
-
-- `/agents` - list available agent profiles
-- `/agent <name>` - switch to a profile such as `coder`, `planner`, or `reviewer`
-- `/model` - show the current model
-- `/model <name>` - switch models without restarting
-
-Example:
+## Example command flow
 
 ```text
 /agents
 /agent coder
-/model your-model-name
+/plan-set Fix the build
+/plan-add Inspect current failures
+/grep TODO .
+/note remember to simplify the parser later
+/workflow capture-note release-checklist
 ```
 
-### Customize agent profiles
-
-Agent profiles live in `personal_agent_toolkit/agents/*.json`.
-Each profile can set:
-
-- `name`
-- `description`
-- `model`
-- `system_prompt`
-
-Example:
-
-```json
-{
-  "name": "claude-coder",
-  "description": "Coding agent routed through a Claude-compatible gateway",
-  "model": "your-claude-compatible-model-name",
-  "system_prompt": "You are a coding-focused personal agent. Prefer concrete code changes and clear summaries."
-}
-```
-
-After adding the file, start the CLI and run:
-
-```text
-/agent claude-coder
-```
-
-This is the easiest way to keep different prompts and default models for different task types.
-
-### Practical guidance
-
-- start with `echo` to confirm the runtime works
-- use `anthropic` for native Claude access
-- use `openai-compatible` for local gateways and compatible providers
-- set a default with `PERSONAL_AGENT_TOOLKIT_MODEL` and override per session with `--model` or `/model`
-- if tool calling fails, verify that your endpoint supports the required tool-calling format for that provider
+---
 
 ## Key commands
 
@@ -279,30 +254,70 @@ This is the easiest way to keep different prompts and default models for differe
 - `/replace-block <path> <old> <new>`
 - `/insert-after <path> <anchor> <content>`
 
-## Repository hygiene
+---
 
-Before pushing to GitHub:
+## Repository layout
 
-- confirm no secrets are present
-- confirm no personal data is committed
-- review sample prompts/plugin text for naming you do not want public
-- choose the license you want to publish under
+```text
+personal-agent-toolkit/
+├─ personal_agent_toolkit/
+│  ├─ agents/
+│  └─ core/
+├─ plugins/
+├─ mcp_servers/
+├─ skills/
+├─ tests/
+├─ .github/
+├─ README.md
+├─ ARCHITECTURE.md
+├─ ROADMAP.md
+├─ CHANGELOG.md
+└─ pyproject.toml
+```
 
-## Collaboration notes
+---
 
-If you publish this repo on GitHub, recommended next steps are:
+## Open source and collaboration
 
-- enable Issues
-- enable Discussions
-- protect the default branch
-- require pull requests for non-trivial changes
-- add CI once the repo is public
+This repository is intended to support:
 
-This repository now includes:
+- personal use
+- collaborative enhancement
+- research experiments
+- independent plugin and workflow development
+
+The project uses the **MIT License**.
+
+Related docs:
+
+- [LICENSE](LICENSE)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [SECURITY.md](SECURITY.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [ROADMAP.md](ROADMAP.md)
+- [CHANGELOG.md](CHANGELOG.md)
+
+The repository also includes:
 
 - GitHub Actions CI
 - issue templates
 - pull request template
+
+---
+
+## Practical publishing notes
+
+- keep secrets and personal data out of commits
+- review prompts and plugin text before publishing
+- keep branding neutral if you want lower trademark risk
+- this repository intentionally avoids bundling mirrored upstream source trees
+
+See also:
+
+- [LEGAL_AND_PRIVACY.md](LEGAL_AND_PRIVACY.md)
+
+---
 
 ## Verification
 
