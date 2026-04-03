@@ -20,10 +20,52 @@ from .core.tasks import TaskManager
 from .core.tools import ToolRegistry
 
 
+OPENAI_COMPATIBLE_PROVIDER_DEFAULTS: dict[str, tuple[str, tuple[str, ...], str]] = {
+    "openai": ("https://api.openai.com/v1", ("OPENAI_API_KEY",), ""),
+    "openai-compatible": ("http://localhost:11434/v1", (), "dummy"),
+    "ollama": ("http://localhost:11434/v1", ("OLLAMA_API_KEY",), "dummy"),
+    "gemini": (
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+        "",
+    ),
+}
+
+OPENAI_COMPATIBLE_PROVIDER_ALIASES: dict[str, str] = {
+    "openai": "openai",
+    "openai-compatible": "openai-compatible",
+    "openai_compatible": "openai-compatible",
+    "local-openai": "openai-compatible",
+    "ollama": "ollama",
+    "gemini": "gemini",
+    "google": "gemini",
+    "google-ai": "gemini",
+}
+
+
+def _first_env(*names: str) -> str:
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _create_openai_compatible_provider(provider_key: str, *, base_url: str, api_key: str, timeout: float) -> OpenAICompatibleProvider:
+    default_base_url, fallback_env_vars, default_api_key = OPENAI_COMPATIBLE_PROVIDER_DEFAULTS[provider_key]
+    resolved_base_url = base_url or default_base_url
+    resolved_api_key = api_key or _first_env(*fallback_env_vars) or default_api_key
+    return OpenAICompatibleProvider(
+        base_url=resolved_base_url,
+        api_key=resolved_api_key,
+        timeout=timeout,
+    )
+
+
 def create_provider() -> object:
     provider_name = os.getenv("PERSONAL_AGENT_TOOLKIT_PROVIDER", "echo").strip().lower()
-    api_key = os.getenv("PERSONAL_AGENT_TOOLKIT_API_KEY", "")
-    base_url = os.getenv("PERSONAL_AGENT_TOOLKIT_BASE_URL", "")
+    api_key = os.getenv("PERSONAL_AGENT_TOOLKIT_API_KEY", "").strip()
+    base_url = os.getenv("PERSONAL_AGENT_TOOLKIT_BASE_URL", "").strip()
     timeout = float(os.getenv("PERSONAL_AGENT_TOOLKIT_TIMEOUT", "120"))
 
     if provider_name in {"anthropic", "claude"}:
@@ -35,10 +77,11 @@ def create_provider() -> object:
             max_tokens=int(os.getenv("PERSONAL_AGENT_TOOLKIT_MAX_TOKENS", "4096")),
         )
 
-    if provider_name in {"openai", "openai-compatible", "openai_compatible"}:
-        return OpenAICompatibleProvider(
-            base_url=base_url or "http://localhost:11434/v1",
-            api_key=api_key or "dummy",
+    if provider_name in OPENAI_COMPATIBLE_PROVIDER_ALIASES:
+        return _create_openai_compatible_provider(
+            OPENAI_COMPATIBLE_PROVIDER_ALIASES[provider_name],
+            base_url=base_url,
+            api_key=api_key,
             timeout=timeout,
         )
     return EchoProvider()

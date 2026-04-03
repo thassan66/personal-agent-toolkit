@@ -166,7 +166,10 @@ The runtime currently supports:
 
 - `echo` for smoke testing
 - `anthropic` / `claude` for native Claude access
-- `openai` / `openai-compatible` for OpenAI-style endpoints
+- `openai` for the official OpenAI API
+- `gemini` / `google` for Google's OpenAI-compatible Gemini endpoint
+- `ollama` for a local OpenAI-compatible Ollama server
+- `openai-compatible` for any other OpenAI-style endpoint or proxy
 
 ### Environment variables
 
@@ -181,12 +184,30 @@ PERSONAL_AGENT_TOOLKIT_ANTHROPIC_VERSION
 PERSONAL_AGENT_TOOLKIT_MAX_TOKENS
 ```
 
+Provider-specific API key fallbacks:
+
+- `anthropic` / `claude` -> `ANTHROPIC_API_KEY`
+- `openai` -> `OPENAI_API_KEY`
+- `gemini` / `google` -> `GEMINI_API_KEY` or `GOOGLE_API_KEY`
+- `ollama` -> optional `OLLAMA_API_KEY`
+
+You can still override all of those with `PERSONAL_AGENT_TOOLKIT_API_KEY`.
+
 ### Native Claude example
 
 ```powershell
 $env:PERSONAL_AGENT_TOOLKIT_PROVIDER="anthropic"
 $env:PERSONAL_AGENT_TOOLKIT_API_KEY="your-anthropic-api-key"
 $env:PERSONAL_AGENT_TOOLKIT_MODEL="claude-sonnet-4-5"
+python -m personal_agent_toolkit
+```
+
+### Native Gemini example
+
+```powershell
+$env:PERSONAL_AGENT_TOOLKIT_PROVIDER="gemini"
+$env:GEMINI_API_KEY="your-gemini-api-key"
+$env:PERSONAL_AGENT_TOOLKIT_MODEL="gemini-2.5-pro"
 python -m personal_agent_toolkit
 ```
 
@@ -199,6 +220,8 @@ $env:PERSONAL_AGENT_TOOLKIT_API_KEY="dummy"
 $env:PERSONAL_AGENT_TOOLKIT_MODEL="your-model-name"
 python -m personal_agent_toolkit
 ```
+
+Use `openai-compatible` when you want to connect to other hosted model gateways or local proxies that expose `/chat/completions`.
 
 ### One-off model override
 
