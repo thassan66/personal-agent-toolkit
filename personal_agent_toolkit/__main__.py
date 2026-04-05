@@ -19,7 +19,7 @@ from .core.memory import MemoryStore
 from .core.mcp import LocalMcpRegistry
 from .core.planning import PlanStore
 from .core.plugins import PluginManager
-from .core.providers import AnthropicProvider, EchoProvider, OpenAICompatibleProvider
+from .core.providers import AnthropicProvider, EchoProvider, OllamaProvider, OpenAICompatibleProvider
 from .core.query_engine import QueryEngine
 from .core.skills import SkillRegistry
 from .core.tasks import TaskManager
@@ -29,7 +29,6 @@ from .core.tools import ToolRegistry
 OPENAI_COMPATIBLE_PROVIDER_DEFAULTS: dict[str, tuple[str, tuple[str, ...], str]] = {
     "openai": ("https://api.openai.com/v1", ("OPENAI_API_KEY",), ""),
     "openai-compatible": ("http://localhost:11434/v1", (), "dummy"),
-    "ollama": ("http://localhost:11434/v1", ("OLLAMA_API_KEY",), "dummy"),
     "lm-studio": ("http://localhost:1234/v1", (), "lm-studio"),
     "llama.cpp": ("http://localhost:8080/v1", (), "dummy"),
     "gemini": (
@@ -38,6 +37,12 @@ OPENAI_COMPATIBLE_PROVIDER_DEFAULTS: dict[str, tuple[str, tuple[str, ...], str]]
         "",
     ),
 }
+
+OLLAMA_PROVIDER_DEFAULTS: tuple[str, tuple[str, ...], str] = (
+    "http://localhost:11434",
+    ("OLLAMA_API_KEY",),
+    "dummy",
+)
 
 OPENAI_COMPATIBLE_PROVIDER_ALIASES: dict[str, str] = {
     "openai": "openai",
@@ -301,9 +306,23 @@ def _create_openai_compatible_provider(provider_key: str, *, base_url: str, api_
     )
 
 
+def _create_ollama_provider(*, base_url: str, api_key: str, timeout: float) -> OllamaProvider:
+    default_base_url, fallback_env_vars, default_api_key = OLLAMA_PROVIDER_DEFAULTS
+    resolved_base_url = base_url or default_base_url
+    resolved_api_key = api_key or _first_env(*fallback_env_vars) or default_api_key
+    return OllamaProvider(
+        base_url=resolved_base_url,
+        api_key=resolved_api_key,
+        timeout=timeout,
+    )
+
+
 def _fetch_ollama_models(base_url: str, timeout: float = 2.0) -> set[str]:
+    normalized = base_url.rstrip("/")
+    if not normalized.endswith("/v1"):
+        normalized = normalized + "/v1"
     req = urllib.request.Request(
-        url=f"{base_url.rstrip('/')}/models",
+        url=f"{normalized}/models",
         headers={"Content-Type": "application/json", "Authorization": "Bearer dummy"},
         method="GET",
     )
@@ -335,7 +354,7 @@ def _resolve_local_profile_model(
     ollama_base_url = (
         base_url
         or os.getenv("PERSONAL_AGENT_TOOLKIT_BASE_URL", "").strip()
-        or OPENAI_COMPATIBLE_PROVIDER_DEFAULTS["ollama"][0]
+        or OLLAMA_PROVIDER_DEFAULTS[0]
     )
     installed_models = _fetch_ollama_models(ollama_base_url, timeout=timeout or 2.0)
     if not installed_models:
@@ -373,6 +392,13 @@ def create_provider(
             timeout=resolved_timeout,
             anthropic_version=os.getenv("PERSONAL_AGENT_TOOLKIT_ANTHROPIC_VERSION", "2023-06-01"),
             max_tokens=int(os.getenv("PERSONAL_AGENT_TOOLKIT_MAX_TOKENS", "4096")),
+        )
+
+    if provider_name == "ollama":
+        return _create_ollama_provider(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=resolved_timeout,
         )
 
     if provider_name in OPENAI_COMPATIBLE_PROVIDER_ALIASES:

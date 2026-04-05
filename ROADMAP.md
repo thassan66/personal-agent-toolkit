@@ -6,18 +6,23 @@ Implemented:
 
 - local CLI/REPL agent runtime
 - Anthropic + OpenAI-compatible providers
+- native Ollama provider path
 - tools, commands, memory, plans, skills
 - lightweight plugins and workflows
 - local MCP-style resource registry
 - subagent delegation/spawn/wait
+- operator-style HUD, progress feed, and streaming output
+- public reasoning mode
+- active-request cancellation with `Ctrl+C`
+- npm launcher packaging
 
 ## Near-term goals
 
-- improve provider reliability and error handling
-- improve patch/edit ergonomics
-- improve workflow composition
-- add more example plugins and skills
-- improve repo automation and release hygiene
+1. configuration file support
+2. `/doctor` or `/health` command for provider/model setup checks
+3. persistent footer/statusline
+4. command completion and richer history UX
+5. better task control commands like `/cancel`, `/tasks --watch`, and `/task-clear`
 
 ## Mid-term goals
 
@@ -26,6 +31,7 @@ Implemented:
 - stronger model/provider abstractions
 - better logs/trace/debug tooling
 - optional semantic memory/search
+- model capability matrix and smarter provider/model recommendations
 
 ## Longer-term ideas
 
