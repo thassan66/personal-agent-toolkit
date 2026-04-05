@@ -19,9 +19,11 @@ You can record these with:
 
 ### `demo-startup.gif`
 - start the CLI
+- run `/status`
 - run `/agents`
 - switch with `/agent coder`
 - run `/help`
+- trigger a long request and press `Ctrl+C`
 
 ### `demo-workflow-memory.gif`
 - run `/workflow capture-note release-checklist`
@@ -33,3 +35,9 @@ You can record these with:
 - run `/patch-preview ...`
 - run `/replace-block ...`
 - run `/diff ...`
+
+### Suggested new capture: streaming / planning
+- start with `--public-reasoning`
+- run `/agent planner`
+- ask for a short plan
+- show `Reasoning summary:` and live streaming output

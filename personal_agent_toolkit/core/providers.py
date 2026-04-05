@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 Message = dict[str, Any]
 ToolSpec = dict[str, Any]
@@ -24,6 +26,7 @@ class LLMProvider(Protocol):
         *,
         model: str,
         tools: Optional[list[ToolSpec]] = None,
+        stream_handler: Optional[Callable[[dict[str, Any]], None]] = None,
     ) -> CompletionResponse: ...
 
 
@@ -34,17 +37,46 @@ class EchoProvider:
         *,
         model: str,
         tools: Optional[list[ToolSpec]] = None,
+        stream_handler: Optional[Callable[[dict[str, Any]], None]] = None,
     ) -> CompletionResponse:
         user = next((m for m in reversed(messages) if m.get("role") == "user"), None)
         text = (user or {}).get("content", "")
         return CompletionResponse(role="assistant", content=f"[{model}] {text}", tool_calls=[])
 
 
+def _read_http_error_body(exc: urllib.error.HTTPError) -> str:
+    if exc.fp is None:
+        return ""
+    try:
+        body = exc.read()
+    except Exception:  # pragma: no cover
+        return ""
+    if isinstance(body, bytes):
+        return body.decode("utf-8", errors="replace").strip()
+    return str(body).strip()
+
+
+def _format_http_error(prefix: str, exc: urllib.error.HTTPError, guidance: str) -> RuntimeError:
+    detail = _read_http_error_body(exc)
+    message = f"{prefix} ({exc.code} {exc.reason}). {guidance}"
+    if detail:
+        message += f" Response: {detail}"
+    return RuntimeError(message)
+
+
 class OpenAICompatibleProvider:
-    def __init__(self, *, base_url: str, api_key: str, timeout: float = 120.0) -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        timeout: float = 120.0,
+        provider_label: str = "openai-compatible",
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
+        self.provider_label = provider_label
 
     async def complete(
         self,
@@ -52,14 +84,16 @@ class OpenAICompatibleProvider:
         *,
         model: str,
         tools: Optional[list[ToolSpec]] = None,
+        stream_handler: Optional[Callable[[dict[str, Any]], None]] = None,
     ) -> CompletionResponse:
-        return await asyncio.to_thread(self._complete_sync, messages, model, tools)
+        return await asyncio.to_thread(self._complete_sync, messages, model, tools, stream_handler)
 
     def _complete_sync(
         self,
         messages: list[Message],
         model: str,
         tools: Optional[list[ToolSpec]],
+        stream_handler: Optional[Callable[[dict[str, Any]], None]] = None,
     ) -> CompletionResponse:
         payload: dict[str, Any] = {
             "model": model,
@@ -69,6 +103,8 @@ class OpenAICompatibleProvider:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
+        if stream_handler is not None:
+            payload["stream"] = True
 
         req = urllib.request.Request(
             url=f"{self.base_url}/chat/completions",
@@ -79,8 +115,19 @@ class OpenAICompatibleProvider:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
-            data = json.loads(resp.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
+                if stream_handler is not None:
+                    return self._consume_streaming_response(resp, stream_handler)
+                data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise self._translate_http_error(exc, model=model) from exc
+        except urllib.error.URLError as exc:
+            raise self._translate_url_error(exc, model=model) from exc
+        except TimeoutError as exc:
+            raise self._translate_timeout_error(model=model) from exc
+        except socket.timeout as exc:
+            raise self._translate_timeout_error(model=model) from exc
 
         message = data["choices"][0]["message"]
         content = message.get("content") or ""
@@ -102,6 +149,136 @@ class OpenAICompatibleProvider:
             role=message.get("role", "assistant"),
             content=content,
             tool_calls=tool_calls,
+        )
+
+    def _consume_streaming_response(
+        self,
+        resp: Any,
+        stream_handler: Callable[[dict[str, Any]], None],
+    ) -> CompletionResponse:
+        role = "assistant"
+        content_parts: list[str] = []
+        tool_calls: dict[int, dict[str, Any]] = {}
+
+        for raw_line in resp:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line or not line.startswith("data:"):
+                continue
+            data_str = line[5:].strip()
+            if data_str == "[DONE]":
+                break
+            payload = json.loads(data_str)
+            choices = payload.get("choices") or []
+            if not choices:
+                continue
+            delta = choices[0].get("delta") or {}
+            if delta.get("role"):
+                role = str(delta["role"])
+
+            for key in ("thinking", "reasoning", "reasoning_content"):
+                thinking_chunk = delta.get(key)
+                if thinking_chunk:
+                    stream_handler({"kind": "thinking_delta", "text": str(thinking_chunk)})
+
+            content_chunk = delta.get("content")
+            if content_chunk:
+                text = str(content_chunk)
+                content_parts.append(text)
+                stream_handler({"kind": "content_delta", "text": text})
+
+            for tool_call in delta.get("tool_calls") or []:
+                index = int(tool_call.get("index", 0))
+                entry = tool_calls.setdefault(
+                    index,
+                    {
+                        "id": tool_call.get("id"),
+                        "name": "",
+                        "arguments": "",
+                    },
+                )
+                if tool_call.get("id"):
+                    entry["id"] = tool_call["id"]
+                function = tool_call.get("function") or {}
+                if function.get("name"):
+                    entry["name"] += str(function["name"])
+                if function.get("arguments"):
+                    entry["arguments"] += str(function["arguments"])
+
+        final_tool_calls: list[dict[str, Any]] = []
+        for index in sorted(tool_calls):
+            call = tool_calls[index]
+            arguments = call["arguments"] or "{}"
+            parsed_arguments: Any
+            try:
+                parsed_arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                parsed_arguments = {}
+            final_tool_calls.append(
+                {
+                    "id": call["id"] or call["name"] or f"tool_call_{index}",
+                    "name": call["name"] or "unknown_tool",
+                    "arguments": parsed_arguments,
+                }
+            )
+
+        return CompletionResponse(
+            role=role,
+            content="".join(content_parts),
+            tool_calls=final_tool_calls,
+        )
+
+    def _translate_http_error(self, exc: urllib.error.HTTPError, *, model: str) -> RuntimeError:
+        provider = self.provider_label
+        if provider == "ollama" and exc.code == 404:
+            return _format_http_error(
+                "Ollama request failed",
+                exc,
+                f"Start Ollama, confirm the server is reachable at {self.base_url}, and pull the model with `ollama pull {model}`.",
+            )
+        if provider in {"openai", "gemini"} and exc.code == 401:
+            env_var = "OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"
+            return _format_http_error(
+                f"{provider} authentication failed",
+                exc,
+                f"Set {env_var} or PERSONAL_AGENT_TOOLKIT_API_KEY to a valid key.",
+            )
+        if exc.code == 401:
+            return _format_http_error(
+                f"{provider} authentication failed",
+                exc,
+                "Set PERSONAL_AGENT_TOOLKIT_API_KEY to a valid key.",
+            )
+        if exc.code == 404:
+            return _format_http_error(
+                f"{provider} request failed",
+                exc,
+                f"Check the base URL ({self.base_url}) and confirm the model `{model}` exists on that server.",
+            )
+        return _format_http_error(
+            f"{provider} request failed",
+            exc,
+            "Check your provider credentials, base URL, and model name.",
+        )
+
+    def _translate_url_error(self, exc: urllib.error.URLError, *, model: str) -> RuntimeError:
+        provider = self.provider_label
+        if provider == "ollama":
+            return RuntimeError(
+                f"Could not reach Ollama at {self.base_url}. Start Ollama and confirm the model `{model}` is installed."
+            )
+        return RuntimeError(
+            f"Could not reach {provider} at {self.base_url}. Check your network connection and provider base URL."
+        )
+
+    def _translate_timeout_error(self, *, model: str) -> RuntimeError:
+        provider = self.provider_label
+        if provider == "ollama":
+            return RuntimeError(
+                f"Ollama timed out while generating with `{model}`. The model is likely still loading or generating. "
+                "Retry with a longer timeout such as `--timeout 300`, or use a smaller/faster model."
+            )
+        return RuntimeError(
+            f"{provider} timed out while waiting for a response. Retry with a longer `--timeout` value."
         )
 
 
@@ -127,6 +304,7 @@ class AnthropicProvider:
         *,
         model: str,
         tools: Optional[list[ToolSpec]] = None,
+        stream_handler: Optional[Callable[[dict[str, Any]], None]] = None,
     ) -> CompletionResponse:
         return await asyncio.to_thread(self._complete_sync, messages, model, tools)
 
@@ -147,8 +325,23 @@ class AnthropicProvider:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
-            data = json.loads(resp.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
+                data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise self._translate_http_error(exc) from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"Could not reach Anthropic at {self.base_url}. Check your network connection and base URL."
+            ) from exc
+        except TimeoutError as exc:
+            raise RuntimeError(
+                "Anthropic timed out while waiting for a response. Retry with a longer `--timeout` value."
+            ) from exc
+        except socket.timeout as exc:
+            raise RuntimeError(
+                "Anthropic timed out while waiting for a response. Retry with a longer `--timeout` value."
+            ) from exc
         return self._parse_response(data)
 
     def _build_payload(
@@ -268,4 +461,17 @@ class AnthropicProvider:
             role=payload.get("role", "assistant"),
             content="\n".join(part for part in text_parts if part),
             tool_calls=tool_calls,
+        )
+
+    def _translate_http_error(self, exc: urllib.error.HTTPError) -> RuntimeError:
+        if exc.code == 401:
+            return _format_http_error(
+                "Anthropic authentication failed",
+                exc,
+                "Set ANTHROPIC_API_KEY or PERSONAL_AGENT_TOOLKIT_API_KEY to a valid key.",
+            )
+        return _format_http_error(
+            "Anthropic request failed",
+            exc,
+            "Check your API key, base URL, and model name.",
         )

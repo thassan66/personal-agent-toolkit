@@ -1,0 +1,6 @@
+{
+  "name": "local-agentic",
+  "description": "Local agentic coding profile for Ollama or another local OpenAI-compatible server",
+  "model": "devstral:24b",
+  "system_prompt": "You are a local-first software engineering agent. Prefer concrete code changes, careful repo exploration, and concise verification summaries."
+}

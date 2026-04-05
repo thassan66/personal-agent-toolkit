@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import json
 
 from .commands import Command, CommandRegistry
@@ -13,14 +14,174 @@ def _decode_escaped_text(value: str) -> str:
         return value
 
 
+HELP_SECTIONS: list[tuple[str, list[str]]] = [
+    (
+        "Getting started",
+        ["help", "status", "clear", "agents", "agent", "model", "skills", "skill", "search"],
+    ),
+    (
+        "Workspace",
+        ["pwd", "ls", "read", "grep", "glob", "run"],
+    ),
+    (
+        "Editing",
+        ["write", "append", "replace", "regex-replace", "patch-preview", "replace-block", "insert-after", "diff"],
+    ),
+    (
+        "Planning and memory",
+        ["note", "memory", "memory-search", "plan", "plan-set", "plan-add", "plan-done", "plan-clear"],
+    ),
+    (
+        "Automation",
+        ["tools", "tool", "plugins", "workflows", "workflow", "tasks", "task", "delegate", "spawn", "wait", "mcp-servers", "mcp-resources", "mcp-read", "history", "exit", "quit"],
+    ),
+]
+
+COMMAND_USAGE: dict[str, str] = {
+    "help": "/help [command]",
+    "status": "/status",
+    "clear": "/clear",
+    "agent": "/agent [name]",
+    "model": "/model [name]",
+    "skill": "/skill [name]",
+    "skill-show": "/skill-show <name>",
+    "search": "/search <query>",
+    "ls": "/ls [path] [--recursive]",
+    "read": "/read <path>",
+    "write": '/write <path> "<content>"',
+    "append": '/append <path> "<content>"',
+    "run": "/run <shell command>",
+    "grep": "/grep <pattern> [root]",
+    "glob": "/glob <pattern>",
+    "replace": "/replace <path> <old> <new>",
+    "regex-replace": "/regex-replace <path> <pattern> <replacement>",
+    "diff": "/diff <path_a> <path_b>",
+    "plan-set": "/plan-set <title>",
+    "plan-add": "/plan-add <step>",
+    "plan-done": "/plan-done <step_id>",
+    "workflow": "/workflow <name> [args...]",
+    "tool": "/tool <name> [json-args]",
+    "task": "/task [task_id]",
+    "delegate": "/delegate <agent> <prompt>",
+    "spawn": "/spawn <agent> <prompt>",
+    "wait": "/wait <task_id>",
+    "mcp-resources": "/mcp-resources [server]",
+    "mcp-read": "/mcp-read <uri>",
+}
+
+COMMAND_EXAMPLES: dict[str, str] = {
+    "help": "/help plan",
+    "status": "/status",
+    "clear": "/clear",
+    "agent": "/agent coder",
+    "model": "/model claude-sonnet-4-5",
+    "skill": "/skill debug",
+    "search": "/search memory",
+    "ls": "/ls src --recursive",
+    "read": "/read README.md",
+    "write": '/write notes.txt "hello world"',
+    "append": '/append notes.txt "\\nnext step"',
+    "run": "/run git status",
+    "grep": "/grep TODO .",
+    "glob": "/glob **/*.py",
+    "replace": "/replace notes.txt hello goodbye",
+    "regex-replace": "/regex-replace notes.txt hello h.llo",
+    "diff": "/diff before.txt after.txt",
+    "plan-set": "/plan-set Release checklist",
+    "plan-add": "/plan-add Verify demo flow",
+    "plan-done": "/plan-done step-1",
+    "workflow": "/workflow capture-note release-checklist",
+    "tool": '/tool pwd {}',
+    "task": "/task b1234abcd",
+    "delegate": "/delegate coder implement a helper",
+    "spawn": "/spawn reviewer inspect this",
+    "wait": "/wait b1234abcd",
+    "mcp-resources": "/mcp-resources workspace-docs",
+    "mcp-read": "/mcp-read workspace://about",
+}
+
+
 async def help_command(args: list[str], ctx: ToolUseContext) -> str:
-    commands = [f"/{cmd.name}: {cmd.description}" for cmd in ctx.commands.list()]
-    return "\n".join(commands) if commands else "no commands registered"
+    if args:
+        name = args[0].lstrip("/")
+        command = ctx.commands.get(name)
+        if command is None:
+            lines = [f"unknown command: /{name}"]
+            suggestion = difflib.get_close_matches(name, list(ctx.commands.names()), n=1, cutoff=0.5)
+            if suggestion:
+                lines.append(f"did you mean /{suggestion[0]}?")
+            return "\n".join(lines)
+        lines = [f"/{command.name}", command.description]
+        usage = COMMAND_USAGE.get(command.name)
+        if usage:
+            lines.append(f"usage: {usage}")
+        example = COMMAND_EXAMPLES.get(command.name)
+        if example:
+            lines.append(f"example: {example}")
+        return "\n".join(lines)
+
+    if not ctx.commands.list():
+        return "no commands registered"
+
+    lines = [
+        "Slash command guide",
+        "Use /help <command> for details on one command.",
+        "",
+        "Quick start:",
+        "  /agents  list available agent profiles",
+        "  /skills  inspect optional skill prompts",
+        "  /plan    inspect the current persistent plan",
+        "  /search memory  find commands, tools, skills, and agents",
+        "",
+    ]
+    for title, command_names in HELP_SECTIONS:
+        lines.append(f"{title}:")
+        for name in command_names:
+            command = ctx.commands.get(name)
+            if command is None:
+                continue
+            lines.append(f"  /{command.name:<13} {command.description}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 async def tools_command(args: list[str], ctx: ToolUseContext) -> str:
     lines = [f"{tool.name}: {tool.description}" for tool in ctx.tools.list()]
     return "\n".join(lines) if lines else "no tools registered"
+
+
+async def status_command(args: list[str], ctx: ToolUseContext) -> str:
+    engine = ctx.engine
+    if engine is None:
+        return "engine unavailable"
+    provider = getattr(engine.provider, "provider_label", None)
+    if provider is None:
+        provider = "anthropic" if engine.provider.__class__.__name__ == "AnthropicProvider" else "echo"
+    active_skills = getattr(engine, "active_skill_names", [])
+    task_count = len(ctx.tasks.all())
+    plan_title = ""
+    plan_steps = 0
+    plan_store = getattr(engine, "plan_store", None)
+    if plan_store is not None:
+        plan = plan_store.get()
+        plan_title = str(plan.get("title", "")).strip()
+        plan_steps = len(plan.get("steps") or [])
+    lines = [
+        "Session status",
+        f"provider: {provider}",
+        f"model: {engine.model}",
+        f"agent: {engine.active_agent_name}",
+        f"reasoning: {'public' if getattr(engine, 'public_reasoning', False) else 'standard'}",
+        f"workspace: {ctx.cwd}",
+        f"skills: {', '.join(active_skills) if active_skills else '(none)'}",
+        f"tasks: {task_count}",
+        f"plan: {plan_title or '(untitled)'} ({plan_steps} step{'s' if plan_steps != 1 else ''})",
+    ]
+    return "\n".join(lines)
+
+
+async def clear_command(args: list[str], ctx: ToolUseContext) -> str:
+    return "__CLEAR_SCREEN__"
 
 
 async def tasks_command(args: list[str], ctx: ToolUseContext) -> str:
@@ -613,6 +774,12 @@ def register_builtin_commands(registry: CommandRegistry) -> None:
             description="Show available slash commands",
             handler=help_command,
         )
+    )
+    registry.register(
+        Command(name="status", description="Show current session status", handler=status_command)
+    )
+    registry.register(
+        Command(name="clear", description="Clear the terminal screen", handler=clear_command)
     )
     registry.register(
         Command(name="tools", description="List available tools", handler=tools_command)

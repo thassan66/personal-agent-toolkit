@@ -28,6 +28,7 @@ personal_agent_toolkit/core/skills.py
 personal_agent_toolkit/core/tasks.py
 personal_agent_toolkit/core/tools.py
 personal_agent_toolkit/core/workspace.py
+tests/test_cli.py
 tests/test_core.py
 tests/test_plugins.py
 tests/test_providers.py
