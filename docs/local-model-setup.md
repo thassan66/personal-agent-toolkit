@@ -41,6 +41,15 @@ python -m personal_agent_toolkit --provider ollama --local-profile reasoning
 python -m personal_agent_toolkit --provider ollama --local-profile agentic
 ```
 
+If you installed the npm wrapper instead of the Python entrypoint:
+
+```powershell
+personal-agent-toolkit --provider ollama --local-profile balanced
+personal-agent-toolkit --provider ollama --local-profile reasoning --public-reasoning
+```
+
+The npm package is a launcher for the Python CLI, so Python 3.11+ is still required.
+
 For a more transparent interactive experience:
 
 ```powershell
