@@ -110,6 +110,15 @@ pip install -e .
 python -m personal_agent_toolkit --prompt "/help"
 ```
 
+NPM wrapper install:
+
+```bash
+npm install -g personal-agent-toolkit
+personal-agent-toolkit --provider ollama --local-profile balanced
+```
+
+The npm package is a thin launcher around the Python implementation. It still requires Python 3.11+ on the machine.
+
 Interactive mode:
 
 ```bash
@@ -145,6 +154,11 @@ The CLI is intentionally closer to an operator console than a plain REPL:
 - slash commands for session state and screen control
 
 For hosted providers or local models that support it, streamed output is rendered live in the terminal.
+
+Distribution options:
+
+- Python package / editable install for development
+- npm global install for teams that prefer Node-based CLI distribution
 
 ---
 
@@ -228,7 +242,10 @@ PERSONAL_AGENT_TOOLKIT_PUBLIC_REASONING
 PERSONAL_AGENT_TOOLKIT_DEBUG
 PERSONAL_AGENT_TOOLKIT_ANTHROPIC_VERSION
 PERSONAL_AGENT_TOOLKIT_MAX_TOKENS
+PERSONAL_AGENT_TOOLKIT_PYTHON
 ```
+
+`PERSONAL_AGENT_TOOLKIT_PYTHON` can be used by the npm launcher to point to a specific Python interpreter.
 
 Provider-specific API key fallbacks:
 
