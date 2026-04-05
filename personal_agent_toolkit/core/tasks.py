@@ -117,6 +117,27 @@ class TaskManager:
     def get_handle(self, task_id: str) -> Optional[asyncio.Task[Any]]:
         return self._handles.get(task_id)
 
+    def cancel(self, task_id: str) -> Optional[TaskState]:
+        task = self._tasks.get(task_id)
+        if task is None:
+            return None
+        handle = self._handles.get(task_id)
+        if handle is not None and not handle.done():
+            handle.cancel()
+        self.update_status(task_id, TaskStatus.KILLED, error="cancelled")
+        return task
+
+    def clear(self, *, keep_non_terminal: bool = True) -> int:
+        to_remove: list[str] = []
+        for task_id, task in self._tasks.items():
+            if keep_non_terminal and not is_terminal_task_status(task.status):
+                continue
+            to_remove.append(task_id)
+        for task_id in to_remove:
+            self._tasks.pop(task_id, None)
+            self._handles.pop(task_id, None)
+        return len(to_remove)
+
     async def wait(self, task_id: str) -> Optional[TaskState]:
         handle = self._handles.get(task_id)
         if handle is not None:

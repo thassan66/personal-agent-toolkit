@@ -7,6 +7,7 @@ This folder contains public-facing documentation assets for the repository.
 - `demo-startup.gif`
 - `demo-workflow-memory.gif`
 - `demo-editing.gif`
+- `demo-hud-streaming.gif`
 
 You can record these with:
 
@@ -20,6 +21,7 @@ You can record these with:
 ### `demo-startup.gif`
 - start the CLI
 - run `/status`
+- run `/health`
 - run `/agents`
 - switch with `/agent coder`
 - run `/help`
@@ -41,3 +43,9 @@ You can record these with:
 - run `/agent planner`
 - ask for a short plan
 - show `Reasoning summary:` and live streaming output
+
+## Useful docs
+
+- [Command Guide](command-guide.md)
+- [Local model setup](local-model-setup.md)
+- [Config examples](config-examples.md)

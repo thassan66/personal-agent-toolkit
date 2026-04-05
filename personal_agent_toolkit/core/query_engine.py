@@ -197,12 +197,13 @@ class QueryEngine:
                 self._emit_progress("model_stream_content", text=str(event.get("text", "")))
 
         tool_specs = self.tools.as_openai_tools() if self._tools_enabled() else None
+        handler = stream_handler if getattr(self, "stream_enabled", True) else None
         try:
             return await self.provider.complete(
                 messages,
                 model=self.model,
                 tools=tool_specs,
-                stream_handler=stream_handler,
+                stream_handler=handler,
             )
         except RuntimeError as exc:
             if tool_specs and self._tools_unsupported_error(exc):
@@ -216,7 +217,7 @@ class QueryEngine:
                     messages,
                     model=self.model,
                     tools=None,
-                    stream_handler=stream_handler,
+                    stream_handler=handler,
                 )
             raise
 

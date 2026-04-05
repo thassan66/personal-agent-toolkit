@@ -140,6 +140,19 @@ Recommended interactive local setups:
 
 `--local-profile` now resolves against installed Ollama models when possible, so it can fall back to smaller local variants instead of assuming one exact tag is present.
 
+Workspace config:
+
+```toml
+# .personal-agent-toolkit.toml
+provider = "ollama"
+local_profile = "balanced"
+timeout = 300
+public_reasoning = true
+stream = true
+```
+
+The CLI loads `.personal-agent-toolkit.toml` from the current workspace. CLI flags override environment variables, and environment variables override the config file.
+
 ---
 
 ## CLI experience
@@ -152,6 +165,8 @@ The CLI is intentionally closer to an operator console than a plain REPL:
 - public reasoning mode via `--public-reasoning`
 - in-session cancellation with `Ctrl+C` for the active request
 - slash commands for session state and screen control
+- workspace-local config defaults
+- best-effort readline history/completion where the host Python supports it
 
 For hosted providers or local models that support it, streamed output is rendered live in the terminal.
 
@@ -356,6 +371,10 @@ python -m personal_agent_toolkit --model your-model-name
 - `/help`
 - `/status`
 - `/clear`
+- `/health`
+- `/doctor`
+- `/models`
+- `/provider-status`
 - `/tools`
 - `/plugins`
 - `/workflows`
@@ -371,7 +390,11 @@ python -m personal_agent_toolkit --model your-model-name
 - `/skill-show <name>`
 - `/agents`
 - `/agent <name>`
+- `/provider [name]`
 - `/model [name]`
+- `/reasoning [on|off]`
+- `/stream [on|off]`
+- `/timeout [seconds]`
 - `/search <query>`
 - `/plan`
 - `/plan-set <title>`
@@ -380,6 +403,8 @@ python -m personal_agent_toolkit --model your-model-name
 - `/patch-preview <path> <old> <new>`
 - `/replace-block <path> <old> <new>`
 - `/insert-after <path> <anchor> <content>`
+- `/cancel [task_id]`
+- `/task-clear`
 
 Useful runtime controls:
 
@@ -391,6 +416,12 @@ Suggested interactive combinations:
 - interview prep: `/agent planner` with `--public-reasoning`
 - coding tasks: `/agent coder`
 - review/risk checks: `/agent reviewer`
+
+Reference docs:
+
+- [Command guide](docs/command-guide.md)
+- [Config examples](docs/config-examples.md)
+- [Local model setup](docs/local-model-setup.md)
 
 ---
 

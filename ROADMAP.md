@@ -12,17 +12,22 @@ Implemented:
 - local MCP-style resource registry
 - subagent delegation/spawn/wait
 - operator-style HUD, progress feed, and streaming output
+- persistent statusline-style session context near the prompt
 - public reasoning mode
 - active-request cancellation with `Ctrl+C`
+- workspace-local config file support
+- health/provider/model inspection commands
+- runtime controls for provider, reasoning, stream, and timeout
+- best-effort readline history/completion
 - npm launcher packaging
 
 ## Near-term goals
 
-1. configuration file support
-2. `/doctor` or `/health` command for provider/model setup checks
-3. persistent footer/statusline
-4. command completion and richer history UX
-5. better task control commands like `/cancel`, `/tasks --watch`, and `/task-clear`
+1. richer `/doctor` output and repair guidance
+2. better task control commands like `/tasks --watch` and task filtering
+3. cleaner markdown/section rendering for long answers
+4. saved sessions and resumable conversations
+5. prompt templates for common workflows
 
 ## Mid-term goals
 

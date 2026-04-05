@@ -4,8 +4,10 @@ import argparse
 import asyncio
 import json
 import os
+import platform
 import signal
 import sys
+import tomllib
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -98,6 +100,9 @@ ANSI_STYLES = {
     "error": "\033[91m",
 }
 
+CONFIG_FILE_NAME = ".personal-agent-toolkit.toml"
+HISTORY_FILE_NAME = ".personal_agent_toolkit_history"
+
 
 def _first_env(*names: str) -> str:
     for name in names:
@@ -105,6 +110,48 @@ def _first_env(*names: str) -> str:
         if value:
             return value
     return ""
+
+
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _load_config(workspace: Path) -> tuple[dict[str, Any], Path | None]:
+    config_path = workspace / CONFIG_FILE_NAME
+    if not config_path.exists():
+        return {}, None
+    with config_path.open("rb") as handle:
+        payload = tomllib.load(handle)
+    if not isinstance(payload, dict):
+        return {}, config_path
+    config = dict(payload.get("toolkit", payload))
+    if not isinstance(config, dict):
+        return {}, config_path
+    return config, config_path
+
+
+def _pick_setting(
+    cli_value: Any,
+    *,
+    env_name: str | None = None,
+    config: dict[str, Any] | None = None,
+    config_key: str | None = None,
+) -> Any:
+    if cli_value is not None:
+        return cli_value
+    if env_name:
+        env_value = os.getenv(env_name)
+        if env_value not in {None, ""}:
+            return env_value
+    if config is not None and config_key is not None:
+        return config.get(config_key)
+    return None
 
 
 def _supports_color(stream: object) -> bool:
@@ -193,6 +240,49 @@ def _build_prompt_with_context(
     reasoning_marker = "+r" if public_reasoning else ""
     prompt = f"[{agent_name}|{compact_model}{reasoning_marker}] > "
     return _paint(prompt, "accent", enabled=color_enabled)
+
+
+def _render_statusline(*, engine: QueryEngine, provider_label: str, workspace: Path, color_enabled: bool) -> str:
+    task_count = len(engine.tasks.all())
+    plan = engine.plan_store.get() if getattr(engine, "plan_store", None) is not None else {"steps": []}
+    plan_steps = len(plan.get("steps") or [])
+    text = (
+        f"{provider_label} | {engine.model} | {engine.active_agent_name} | "
+        f"reasoning={'public' if engine.public_reasoning else 'std'} | "
+        f"stream={'on' if getattr(engine, 'stream_enabled', True) else 'off'} | "
+        f"timeout={getattr(engine, 'request_timeout', getattr(engine.provider, 'timeout', '?'))} | "
+        f"tasks={task_count} | plan={plan_steps} | ws={workspace.name or workspace}"
+    )
+    return _paint(text, "muted", enabled=color_enabled)
+
+
+def _setup_line_editing(engine: QueryEngine) -> tuple[object | None, Path | None]:
+    try:
+        import readline  # type: ignore
+    except Exception:  # pragma: no cover
+        return None, None
+    history_path = Path.home() / HISTORY_FILE_NAME
+    try:
+        if history_path.exists():
+            readline.read_history_file(str(history_path))
+    except Exception:  # pragma: no cover
+        history_path = None
+
+    def completer(text: str, state: int) -> str | None:
+        buffer = readline.get_line_buffer()
+        if not buffer.startswith("/"):
+            return None
+        prefix = buffer[1:]
+        options = [f"/{name}" for name in engine.commands.names() if name.startswith(prefix)]
+        return options[state] if state < len(options) else None
+
+    try:
+        readline.set_completer(completer)
+        readline.parse_and_bind("tab: complete")
+        readline.set_history_length(500)
+    except Exception:  # pragma: no cover
+        pass
+    return readline, history_path
 
 
 def _truncate(text: str, limit: int = 56) -> str:
@@ -420,6 +510,8 @@ def create_engine(
     base_url: str | None = None,
     timeout: float | None = None,
     public_reasoning: bool | None = None,
+    config_path: Path | None = None,
+    stream_enabled: bool | None = None,
 ) -> QueryEngine:
     tools = ToolRegistry()
     tasks = TaskManager()
@@ -437,7 +529,7 @@ def create_engine(
     register_builtin_commands(commands)
     plugins.register(tools, commands)
 
-    return QueryEngine(
+    engine = QueryEngine(
         cwd=workspace,
         provider=create_provider(
             provider_name=provider_name,
@@ -462,6 +554,15 @@ def create_engine(
             else os.getenv("PERSONAL_AGENT_TOOLKIT_PUBLIC_REASONING", "0") in {"1", "true", "yes", "on"}
         ),
     )
+    engine.provider_name = provider_name or os.getenv("PERSONAL_AGENT_TOOLKIT_PROVIDER", "echo").strip().lower()
+    engine.request_timeout = getattr(engine.provider, "timeout", timeout if timeout is not None else None)
+    engine.stream_enabled = (
+        stream_enabled
+        if stream_enabled is not None
+        else _parse_bool(os.getenv("PERSONAL_AGENT_TOOLKIT_STREAM", "1"), default=True)
+    )
+    engine.config_path = config_path
+    return engine
 
 
 async def run_repl(
@@ -473,6 +574,8 @@ async def run_repl(
     base_url: str | None = None,
     timeout: float | None = None,
     public_reasoning: bool | None = None,
+    config_path: Path | None = None,
+    stream_enabled: bool | None = None,
 ) -> None:
     engine = create_engine(
         workspace=workspace,
@@ -482,15 +585,19 @@ async def run_repl(
         base_url=base_url,
         timeout=timeout,
         public_reasoning=public_reasoning,
+        config_path=config_path,
+        stream_enabled=stream_enabled,
     )
     color_enabled = _supports_color(sys.stdout)
-    provider_label = _resolve_provider_label(provider_name, engine.provider)
+    def current_provider_label() -> str:
+        return _resolve_provider_label(getattr(engine, "provider_name", provider_name), engine.provider)
     stream_state = {
         "thinking_started": False,
         "content_started": False,
         "streamed_content": False,
     }
     active_request_task: asyncio.Task[str] | None = None
+    readline_module, history_path = _setup_line_editing(engine)
 
     def progress_printer(event: dict[str, Any]) -> None:
         kind = event.get("kind")
@@ -539,7 +646,7 @@ async def run_repl(
     print(
         _render_repl_welcome(
             engine=engine,
-            provider_label=provider_label,
+            provider_label=current_provider_label(),
             workspace=workspace,
             color_enabled=color_enabled,
         )
@@ -547,6 +654,7 @@ async def run_repl(
     try:
         while True:
             try:
+                print(_render_statusline(engine=engine, provider_label=current_provider_label(), workspace=workspace, color_enabled=color_enabled))
                 text = input(
                     _build_prompt_with_context(
                         agent_name=engine.active_agent_name,
@@ -583,7 +691,7 @@ async def run_repl(
                 print(
                     _render_repl_welcome(
                         engine=engine,
-                        provider_label=provider_label,
+                        provider_label=current_provider_label(),
                         workspace=workspace,
                         color_enabled=color_enabled,
                     )
@@ -592,6 +700,11 @@ async def run_repl(
             if result and not stream_state["streamed_content"]:
                 print(result)
     finally:
+        if readline_module is not None and history_path is not None:
+            try:
+                readline_module.write_history_file(str(history_path))
+            except Exception:  # pragma: no cover
+                pass
         signal.signal(signal.SIGINT, previous_sigint_handler)
 
 
@@ -605,6 +718,8 @@ async def run_once(
     base_url: str | None = None,
     timeout: float | None = None,
     public_reasoning: bool | None = None,
+    config_path: Path | None = None,
+    stream_enabled: bool | None = None,
 ) -> None:
     engine = create_engine(
         workspace=workspace,
@@ -614,6 +729,8 @@ async def run_once(
         base_url=base_url,
         timeout=timeout,
         public_reasoning=public_reasoning,
+        config_path=config_path,
+        stream_enabled=stream_enabled,
     )
     result = await engine.submit(prompt)
     if result:
@@ -644,6 +761,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Ask the model to include concise visible reasoning summaries in answers",
     )
     parser.add_argument(
+        "--stream",
+        choices=("on", "off"),
+        help="Override streaming output in the REPL",
+    )
+    parser.add_argument(
         "--local-profile",
         choices=sorted(LOCAL_MODEL_PROFILES),
         help="Use a recommended local coding model profile",
@@ -651,16 +773,62 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     workspace = Path(args.cwd).resolve()
-    model = args.model
-    provider_name = args.provider
+    config, config_path = _load_config(workspace)
 
-    if args.local_profile:
+    provider_name = _pick_setting(
+        args.provider,
+        env_name="PERSONAL_AGENT_TOOLKIT_PROVIDER",
+        config=config,
+        config_key="provider",
+    )
+    base_url = _pick_setting(
+        args.base_url,
+        env_name="PERSONAL_AGENT_TOOLKIT_BASE_URL",
+        config=config,
+        config_key="base_url",
+    )
+    api_key = _pick_setting(
+        args.api_key,
+        env_name="PERSONAL_AGENT_TOOLKIT_API_KEY",
+        config=config,
+        config_key="api_key",
+    )
+    timeout_value = _pick_setting(
+        args.timeout,
+        env_name="PERSONAL_AGENT_TOOLKIT_TIMEOUT",
+        config=config,
+        config_key="timeout",
+    )
+    timeout = float(timeout_value) if timeout_value not in {None, ""} else None
+    model = _pick_setting(
+        args.model,
+        env_name="PERSONAL_AGENT_TOOLKIT_MODEL",
+        config=config,
+        config_key="model",
+    )
+    config_public_reasoning = _parse_bool(config.get("public_reasoning"), default=False) if config else False
+    env_public_reasoning = _parse_bool(os.getenv("PERSONAL_AGENT_TOOLKIT_PUBLIC_REASONING"), default=False)
+    public_reasoning = args.public_reasoning or env_public_reasoning or config_public_reasoning
+    local_profile = _pick_setting(
+        args.local_profile,
+        config=config,
+        config_key="local_profile",
+    )
+    stream_choice = _pick_setting(
+        args.stream,
+        env_name="PERSONAL_AGENT_TOOLKIT_STREAM",
+        config=config,
+        config_key="stream",
+    )
+    stream_enabled = None if stream_choice is None else _parse_bool(stream_choice, default=True)
+
+    if local_profile:
         provider_name = provider_name or "ollama"
         model = model or _resolve_local_profile_model(
-            args.local_profile,
+            str(local_profile),
             provider_name=provider_name,
-            base_url=args.base_url,
-            timeout=args.timeout,
+            base_url=str(base_url) if base_url else None,
+            timeout=timeout,
         )
 
     if args.prompt:
@@ -670,10 +838,12 @@ def main(argv: list[str] | None = None) -> None:
                 prompt=args.prompt,
                 model=model,
                 provider_name=provider_name,
-                api_key=args.api_key,
-                base_url=args.base_url,
-                timeout=args.timeout,
-                public_reasoning=args.public_reasoning,
+                api_key=str(api_key) if api_key is not None else None,
+                base_url=str(base_url) if base_url is not None else None,
+                timeout=timeout,
+                public_reasoning=public_reasoning,
+                config_path=config_path,
+                stream_enabled=stream_enabled,
             )
         )
         return
@@ -682,10 +852,12 @@ def main(argv: list[str] | None = None) -> None:
             workspace=workspace,
             model=model,
             provider_name=provider_name,
-            api_key=args.api_key,
-            base_url=args.base_url,
-            timeout=args.timeout,
-            public_reasoning=args.public_reasoning,
+            api_key=str(api_key) if api_key is not None else None,
+            base_url=str(base_url) if base_url is not None else None,
+            timeout=timeout,
+            public_reasoning=public_reasoning,
+            config_path=config_path,
+            stream_enabled=stream_enabled,
         )
     )
 

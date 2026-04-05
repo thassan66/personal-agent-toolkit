@@ -3,15 +3,18 @@ from __future__ import annotations
 import asyncio
 import io
 import signal
+import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from personal_agent_toolkit.__main__ import (
     _build_prompt,
     _build_prompt_with_context,
+    CONFIG_FILE_NAME,
     _render_repl_welcome,
     create_engine,
+    main,
     run_repl,
 )
 from personal_agent_toolkit.core.agents import AgentRegistry
@@ -145,6 +148,83 @@ class CliRenderingTests(unittest.TestCase):
         self.assertIn("agent:", result)
         self.assertIn("reasoning: public", result)
 
+    def test_stream_timeout_and_reasoning_commands_update_session_state(self) -> None:
+        engine = create_engine(workspace=REPO_ROOT, public_reasoning=False)
+
+        reasoning_result = asyncio.run(engine.submit("/reasoning on"))
+        stream_result = asyncio.run(engine.submit("/stream off"))
+        timeout_result = asyncio.run(engine.submit("/timeout 42"))
+
+        self.assertEqual(reasoning_result, "reasoning set to public")
+        self.assertEqual(stream_result, "stream set to off")
+        self.assertEqual(timeout_result, "timeout set to 42s")
+        self.assertTrue(engine.public_reasoning)
+        self.assertFalse(engine.stream_enabled)
+        self.assertEqual(engine.request_timeout, 42.0)
+
+    def test_provider_command_switches_provider(self) -> None:
+        engine = create_engine(workspace=REPO_ROOT, provider_name="echo", model="echo-local")
+
+        result = asyncio.run(engine.submit("/provider ollama"))
+
+        self.assertEqual(result, "provider set to ollama")
+        self.assertEqual(engine.provider_name, "ollama")
+
+    def test_models_command_requires_ollama(self) -> None:
+        engine = create_engine(workspace=REPO_ROOT, provider_name="echo")
+
+        result = asyncio.run(engine.submit("/models"))
+
+        self.assertIn("supported for ollama only", result)
+
+    def test_health_command_reports_basic_environment(self) -> None:
+        engine = create_engine(workspace=REPO_ROOT, provider_name="echo")
+
+        result = asyncio.run(engine.submit("/health"))
+
+        self.assertIn("Health check", result)
+        self.assertIn("python:", result)
+        self.assertIn("provider: echo", result)
+
+    def test_doctor_command_reports_mock_mode_guidance(self) -> None:
+        engine = create_engine(workspace=REPO_ROOT, provider_name="echo")
+
+        result = asyncio.run(engine.submit("/doctor"))
+
+        self.assertIn("Doctor report", result)
+        self.assertIn("status: mock mode", result)
+        self.assertIn("--provider ollama", result)
+
+    def test_doctor_command_reports_ollama_model_status(self) -> None:
+        engine = create_engine(workspace=REPO_ROOT, provider_name="ollama", model="qwen2.5-coder:3b")
+
+        def fake_request_json(url: str, *, timeout: float = 3.0, headers=None):  # noqa: ANN001
+            if url.endswith("/api/version"):
+                return {"version": "0.7.0"}
+            if url.endswith("/api/tags"):
+                return {
+                    "models": [
+                        {"name": "qwen2.5-coder:3b"},
+                        {"name": "deepseek-r1:14b"},
+                    ]
+                }
+            raise AssertionError(url)
+
+        with patch("personal_agent_toolkit.core.builtin_commands._request_json", side_effect=fake_request_json):
+            result = asyncio.run(engine.submit("/doctor"))
+
+        self.assertIn("status: ok", result)
+        self.assertIn("ollama-version: 0.7.0", result)
+        self.assertIn("current-model-installed: yes", result)
+        self.assertIn("recommended-installed:", result)
+
+    def test_cancel_without_task_gives_guidance(self) -> None:
+        engine = create_engine(workspace=REPO_ROOT)
+
+        result = asyncio.run(engine.submit("/cancel"))
+
+        self.assertIn("Ctrl+C", result)
+
     def test_public_reasoning_adds_system_instruction(self) -> None:
         engine = create_engine(workspace=REPO_ROOT, public_reasoning=True)
 
@@ -188,6 +268,7 @@ class CliInteractionTests(unittest.TestCase):
         output = stdout.getvalue()
         self.assertIn("Personal Agent Toolkit", output)
         self.assertIn("Try this first", output)
+        self.assertIn("stream=on", output)
         self.assertEqual(prompts, ["[coder|echo-local] > "])
 
     def test_run_repl_clear_command_rerenders_welcome(self) -> None:
@@ -263,6 +344,32 @@ class CliInteractionTests(unittest.TestCase):
         output = stdout.getvalue()
         self.assertIn("[cancelled] stopped current request", output)
         self.assertIn("Personal Agent Toolkit", output)
+
+    def test_main_loads_workspace_config(self) -> None:
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as td:
+            workspace = Path(td)
+            (workspace / CONFIG_FILE_NAME).write_text(
+                "\n".join(
+                    [
+                        'provider = "ollama"',
+                        'model = "qwen2.5-coder:3b"',
+                        "timeout = 55",
+                        "public_reasoning = true",
+                        'stream = "off"',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("personal_agent_toolkit.__main__.run_repl", new_callable=AsyncMock) as run_repl:
+                main(["--cwd", str(workspace)])
+
+        kwargs = run_repl.call_args.kwargs
+        self.assertEqual(kwargs["provider_name"], "ollama")
+        self.assertEqual(kwargs["model"], "qwen2.5-coder:3b")
+        self.assertEqual(kwargs["timeout"], 55.0)
+        self.assertTrue(kwargs["public_reasoning"])
+        self.assertFalse(kwargs["stream_enabled"])
 
     def test_unknown_command_suggests_nearest_match(self) -> None:
         engine = create_engine(workspace=REPO_ROOT)

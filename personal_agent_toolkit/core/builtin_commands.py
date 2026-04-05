@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import difflib
 import json
+import os
+import platform
+import sys
+import time
+import urllib.error
+import urllib.request
 
 from .commands import Command, CommandRegistry
 from .tools import ToolUseContext
@@ -17,7 +23,7 @@ def _decode_escaped_text(value: str) -> str:
 HELP_SECTIONS: list[tuple[str, list[str]]] = [
     (
         "Getting started",
-        ["help", "status", "clear", "agents", "agent", "model", "skills", "skill", "search"],
+        ["help", "status", "clear", "health", "doctor", "models", "provider-status", "agents", "agent", "provider", "model", "skills", "skill", "search"],
     ),
     (
         "Workspace",
@@ -33,7 +39,7 @@ HELP_SECTIONS: list[tuple[str, list[str]]] = [
     ),
     (
         "Automation",
-        ["tools", "tool", "plugins", "workflows", "workflow", "tasks", "task", "delegate", "spawn", "wait", "mcp-servers", "mcp-resources", "mcp-read", "history", "exit", "quit"],
+        ["tools", "tool", "plugins", "workflows", "workflow", "tasks", "task", "cancel", "task-clear", "delegate", "spawn", "wait", "mcp-servers", "mcp-resources", "mcp-read", "history", "exit", "quit"],
     ),
 ]
 
@@ -41,8 +47,18 @@ COMMAND_USAGE: dict[str, str] = {
     "help": "/help [command]",
     "status": "/status",
     "clear": "/clear",
+    "health": "/health",
+    "doctor": "/doctor",
+    "models": "/models",
+    "provider-status": "/provider-status",
     "agent": "/agent [name]",
+    "provider": "/provider [name]",
     "model": "/model [name]",
+    "reasoning": "/reasoning [on|off]",
+    "stream": "/stream [on|off]",
+    "timeout": "/timeout [seconds]",
+    "cancel": "/cancel [task_id]",
+    "task-clear": "/task-clear",
     "skill": "/skill [name]",
     "skill-show": "/skill-show <name>",
     "search": "/search <query>",
@@ -73,8 +89,18 @@ COMMAND_EXAMPLES: dict[str, str] = {
     "help": "/help plan",
     "status": "/status",
     "clear": "/clear",
+    "health": "/health",
+    "doctor": "/doctor",
+    "models": "/models",
+    "provider-status": "/provider-status",
     "agent": "/agent coder",
+    "provider": "/provider ollama",
     "model": "/model claude-sonnet-4-5",
+    "reasoning": "/reasoning on",
+    "stream": "/stream off",
+    "timeout": "/timeout 300",
+    "cancel": "/cancel a1234abcd",
+    "task-clear": "/task-clear",
     "skill": "/skill debug",
     "search": "/search memory",
     "ls": "/ls src --recursive",
@@ -99,6 +125,30 @@ COMMAND_EXAMPLES: dict[str, str] = {
     "mcp-resources": "/mcp-resources workspace-docs",
     "mcp-read": "/mcp-read workspace://about",
 }
+
+
+def _request_json(url: str, *, timeout: float = 3.0, headers: dict[str, str] | None = None) -> dict[str, object]:
+    req = urllib.request.Request(url, headers=headers or {}, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _provider_label(engine: object) -> str:
+    provider = getattr(engine, "provider", None)
+    label = getattr(provider, "provider_label", None)
+    if label:
+        return str(label)
+    return provider.__class__.__name__.replace("Provider", "").lower() if provider else "unknown"
+
+
+def _provider_api_key_status(engine: object) -> str:
+    api_key = getattr(getattr(engine, "provider", None), "api_key", "")
+    return "configured" if api_key else "missing"
+
+
+def _config_hint(engine: object) -> str:
+    config_path = getattr(engine, "config_path", None)
+    return str(config_path) if config_path else "(none)"
 
 
 async def help_command(args: list[str], ctx: ToolUseContext) -> str:
@@ -154,9 +204,7 @@ async def status_command(args: list[str], ctx: ToolUseContext) -> str:
     engine = ctx.engine
     if engine is None:
         return "engine unavailable"
-    provider = getattr(engine.provider, "provider_label", None)
-    if provider is None:
-        provider = "anthropic" if engine.provider.__class__.__name__ == "AnthropicProvider" else "echo"
+    provider = _provider_label(engine)
     active_skills = getattr(engine, "active_skill_names", [])
     task_count = len(ctx.tasks.all())
     plan_title = ""
@@ -172,7 +220,10 @@ async def status_command(args: list[str], ctx: ToolUseContext) -> str:
         f"model: {engine.model}",
         f"agent: {engine.active_agent_name}",
         f"reasoning: {'public' if getattr(engine, 'public_reasoning', False) else 'standard'}",
+        f"stream: {'on' if getattr(engine, 'stream_enabled', True) else 'off'}",
+        f"timeout: {getattr(engine, 'request_timeout', getattr(engine.provider, 'timeout', '?'))}",
         f"workspace: {ctx.cwd}",
+        f"config: {getattr(engine, 'config_path', None) or '(none)'}",
         f"skills: {', '.join(active_skills) if active_skills else '(none)'}",
         f"tasks: {task_count}",
         f"plan: {plan_title or '(untitled)'} ({plan_steps} step{'s' if plan_steps != 1 else ''})",
@@ -182,6 +233,284 @@ async def status_command(args: list[str], ctx: ToolUseContext) -> str:
 
 async def clear_command(args: list[str], ctx: ToolUseContext) -> str:
     return "__CLEAR_SCREEN__"
+
+
+async def health_command(args: list[str], ctx: ToolUseContext) -> str:
+    engine = ctx.engine
+    if engine is None:
+        return "engine unavailable"
+    provider_name = _provider_label(engine)
+    lines = [
+        "Health check",
+        f"python: {sys.version.split()[0]} ({platform.system()})",
+        f"provider: {provider_name}",
+        f"model: {engine.model}",
+        f"workspace: {ctx.cwd}",
+    ]
+    if provider_name == "ollama":
+        base_url = getattr(engine.provider, "base_url", "http://localhost:11434")
+        try:
+            started = time.perf_counter()
+            payload = _request_json(
+                f"{str(base_url).rstrip('/')}/api/tags",
+                timeout=3.0,
+                headers={"Authorization": "Bearer dummy"},
+            )
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            models = [str(model.get("name", "")).strip() for model in payload.get("models", []) if str(model.get("name", "")).strip()]
+            lines.append(f"ollama: reachable ({elapsed_ms}ms)")
+            lines.append(f"installed-models: {len(models)}")
+        except Exception as exc:  # pragma: no cover
+            lines.append(f"ollama: unreachable ({type(exc).__name__}: {exc})")
+    elif provider_name in {"anthropic", "openai", "openai-compatible", "gemini", "lm-studio", "llama.cpp"}:
+        lines.append(f"api-key: {_provider_api_key_status(engine)}")
+        lines.append(f"base-url: {getattr(engine.provider, 'base_url', '(unknown)')}")
+    else:
+        lines.append("provider-check: no live health probe for this provider")
+    return "\n".join(lines)
+
+
+async def doctor_command(args: list[str], ctx: ToolUseContext) -> str:
+    engine = ctx.engine
+    if engine is None:
+        return "engine unavailable"
+    provider_name = _provider_label(engine)
+    lines = [
+        "Doctor report",
+        f"python: {sys.version.split()[0]} ({platform.system()})",
+        f"workspace: {ctx.cwd}",
+        f"config: {_config_hint(engine)}",
+        f"provider: {provider_name}",
+        f"model: {engine.model}",
+        f"reasoning: {'public' if getattr(engine, 'public_reasoning', False) else 'standard'}",
+        f"stream: {'on' if getattr(engine, 'stream_enabled', True) else 'off'}",
+        "",
+    ]
+
+    if provider_name == "echo":
+        lines.extend(
+            [
+                "status: mock mode",
+                "issue: no real provider configured",
+                "fix: start with `--provider ollama`, `--provider anthropic`, or `--provider openai`",
+            ]
+        )
+        return "\n".join(lines)
+
+    if provider_name == "ollama":
+        base_url = str(getattr(engine.provider, "base_url", "http://localhost:11434")).rstrip("/")
+        headers = {"Authorization": "Bearer dummy"}
+        try:
+            started = time.perf_counter()
+            version_payload = _request_json(f"{base_url}/api/version", timeout=3.0, headers=headers)
+            version_latency = int((time.perf_counter() - started) * 1000)
+            tags_payload = _request_json(f"{base_url}/api/tags", timeout=3.0, headers=headers)
+            models = [
+                str(model.get("name", "")).strip()
+                for model in tags_payload.get("models", [])
+                if str(model.get("name", "")).strip()
+            ]
+            current_present = engine.model in models
+            recommended = [name for name in ("qwen2.5-coder:3b", "qwen2.5-coder:14b", "deepseek-r1:14b") if name in models]
+            lines.extend(
+                [
+                    "status: ok",
+                    f"base-url: {base_url}",
+                    f"ollama-version: {version_payload.get('version', '(unknown)')}",
+                    f"latency_ms: {version_latency}",
+                    f"installed-models: {len(models)}",
+                    f"current-model-installed: {'yes' if current_present else 'no'}",
+                    f"recommended-installed: {', '.join(recommended) if recommended else '(none)'}",
+                ]
+            )
+            if not current_present:
+                lines.append(f"fix: run `ollama pull {engine.model}`")
+            if "deepseek" in str(engine.model).lower():
+                lines.append("hint: deepseek models may be slower to first token; qwen2.5-coder:3b or :14b is better for interactive use")
+            return "\n".join(lines)
+        except Exception as exc:  # pragma: no cover
+            lines.extend(
+                [
+                    "status: error",
+                    f"base-url: {base_url}",
+                    f"issue: could not reach Ollama ({type(exc).__name__}: {exc})",
+                    "fix: start Ollama and verify `curl http://localhost:11434/api/tags` works",
+                ]
+            )
+            return "\n".join(lines)
+
+    base_url = getattr(engine.provider, "base_url", "(unknown)")
+    api_key_status = _provider_api_key_status(engine)
+    lines.extend(
+        [
+            f"base-url: {base_url}",
+            f"api-key: {api_key_status}",
+        ]
+    )
+    if api_key_status == "missing":
+        if provider_name == "anthropic":
+            lines.append("fix: set ANTHROPIC_API_KEY or PERSONAL_AGENT_TOOLKIT_API_KEY")
+        elif provider_name == "openai":
+            lines.append("fix: set OPENAI_API_KEY or PERSONAL_AGENT_TOOLKIT_API_KEY")
+        elif provider_name == "gemini":
+            lines.append("fix: set GEMINI_API_KEY, GOOGLE_API_KEY, or PERSONAL_AGENT_TOOLKIT_API_KEY")
+        else:
+            lines.append("fix: set PERSONAL_AGENT_TOOLKIT_API_KEY")
+        lines.append("status: configuration incomplete")
+    else:
+        lines.append("status: configuration looks usable")
+    return "\n".join(lines)
+
+
+async def models_command(args: list[str], ctx: ToolUseContext) -> str:
+    engine = ctx.engine
+    if engine is None:
+        return "engine unavailable"
+    provider_name = _provider_label(engine)
+    if provider_name != "ollama":
+        return "model listing is currently supported for ollama only"
+    base_url = getattr(engine.provider, "base_url", "http://localhost:11434")
+    try:
+        payload = _request_json(
+            f"{str(base_url).rstrip('/')}/api/tags",
+            timeout=3.0,
+            headers={"Authorization": "Bearer dummy"},
+        )
+    except Exception as exc:  # pragma: no cover
+        return f"could not list ollama models: {type(exc).__name__}: {exc}"
+    models = [
+        {
+            "name": str(model.get("name", "")).strip(),
+            "size": model.get("size"),
+        }
+        for model in payload.get("models", [])
+        if str(model.get("name", "")).strip()
+    ]
+    if not models:
+        return "no ollama models found"
+    recommendations = {
+        "qwen2.5-coder:3b": "fast",
+        "qwen2.5-coder:14b": "balanced",
+        "deepseek-r1:14b": "reasoning",
+    }
+    lines = []
+    for model in models:
+        recommendation = recommendations.get(model["name"])
+        suffix = f" [{recommendation}]" if recommendation else ""
+        lines.append(f"{model['name']}{suffix}")
+    return "\n".join(lines)
+
+
+async def provider_status_command(args: list[str], ctx: ToolUseContext) -> str:
+    engine = ctx.engine
+    if engine is None:
+        return "engine unavailable"
+    provider_name = _provider_label(engine)
+    if provider_name == "ollama":
+        base_url = getattr(engine.provider, "base_url", "http://localhost:11434")
+        try:
+            started = time.perf_counter()
+            _request_json(
+                f"{str(base_url).rstrip('/')}/api/version",
+                timeout=3.0,
+                headers={"Authorization": "Bearer dummy"},
+            )
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            return f"provider={provider_name}\nstatus=ok\nlatency_ms={elapsed_ms}\nbase_url={base_url}"
+        except Exception as exc:  # pragma: no cover
+            return f"provider={provider_name}\nstatus=error\nerror={type(exc).__name__}: {exc}\nbase_url={base_url}"
+    if provider_name in {"anthropic", "openai", "openai-compatible", "gemini", "lm-studio", "llama.cpp"}:
+        base_url = getattr(engine.provider, "base_url", "(unknown)")
+        api_key = getattr(engine.provider, "api_key", "")
+        return "\n".join(
+            [
+                f"provider={provider_name}",
+                "status=configured" if api_key else "status=missing_api_key",
+                f"base_url={base_url}",
+            ]
+        )
+    return f"provider={provider_name}\nstatus=unknown"
+
+
+async def provider_command(args: list[str], ctx: ToolUseContext) -> str:
+    engine = ctx.engine
+    if engine is None:
+        return "engine unavailable"
+    if not args:
+        return _provider_label(engine)
+    requested = args[0].strip().lower()
+    try:
+        from personal_agent_toolkit.__main__ import create_provider
+    except Exception as exc:  # pragma: no cover
+        return f"provider switching unavailable: {exc}"
+    timeout = getattr(engine, "request_timeout", getattr(engine.provider, "timeout", None))
+    base_url = getattr(engine.provider, "base_url", None)
+    api_key = getattr(engine.provider, "api_key", None)
+    engine.provider = create_provider(
+        provider_name=requested,
+        api_key=api_key,
+        base_url=base_url,
+        timeout=timeout,
+    )
+    engine.provider_name = requested
+    engine.request_timeout = getattr(engine.provider, "timeout", timeout)
+    return f"provider set to {requested}"
+
+
+async def reasoning_command(args: list[str], ctx: ToolUseContext) -> str:
+    engine = ctx.engine
+    if engine is None:
+        return "engine unavailable"
+    if not args:
+        return "public" if getattr(engine, "public_reasoning", False) else "standard"
+    choice = args[0].strip().lower()
+    if choice not in {"on", "off"}:
+        return "usage: /reasoning [on|off]"
+    engine.public_reasoning = choice == "on"
+    return f"reasoning set to {'public' if engine.public_reasoning else 'standard'}"
+
+
+async def stream_command(args: list[str], ctx: ToolUseContext) -> str:
+    engine = ctx.engine
+    if engine is None:
+        return "engine unavailable"
+    if not args:
+        return "on" if getattr(engine, "stream_enabled", True) else "off"
+    choice = args[0].strip().lower()
+    if choice not in {"on", "off"}:
+        return "usage: /stream [on|off]"
+    engine.stream_enabled = choice == "on"
+    return f"stream set to {'on' if engine.stream_enabled else 'off'}"
+
+
+async def timeout_command(args: list[str], ctx: ToolUseContext) -> str:
+    engine = ctx.engine
+    if engine is None:
+        return "engine unavailable"
+    if not args:
+        return str(getattr(engine, "request_timeout", getattr(engine.provider, "timeout", "")))
+    try:
+        seconds = float(args[0])
+    except ValueError:
+        return "usage: /timeout [seconds]"
+    engine.request_timeout = seconds
+    if hasattr(engine.provider, "timeout"):
+        engine.provider.timeout = seconds
+    return f"timeout set to {seconds:g}s"
+
+
+async def cancel_command(args: list[str], ctx: ToolUseContext) -> str:
+    if not args:
+        return "use Ctrl+C to cancel the active foreground request, or /cancel <task_id> for a background task"
+    task = ctx.tasks.cancel(args[0])
+    if task is None:
+        return f"task_not_found: {args[0]}"
+    return f"cancelled task {task.id}"
+
+
+async def task_clear_command(args: list[str], ctx: ToolUseContext) -> str:
+    removed = ctx.tasks.clear()
+    return f"cleared {removed} task(s)"
 
 
 async def tasks_command(args: list[str], ctx: ToolUseContext) -> str:
@@ -782,6 +1111,18 @@ def register_builtin_commands(registry: CommandRegistry) -> None:
         Command(name="clear", description="Clear the terminal screen", handler=clear_command)
     )
     registry.register(
+        Command(name="health", description="Run a basic environment and provider health check", handler=health_command)
+    )
+    registry.register(
+        Command(name="doctor", description="Run actionable diagnostics and setup checks", handler=doctor_command)
+    )
+    registry.register(
+        Command(name="models", description="List local models for the active provider", handler=models_command)
+    )
+    registry.register(
+        Command(name="provider-status", description="Show provider latency or config status", handler=provider_status_command)
+    )
+    registry.register(
         Command(name="tools", description="List available tools", handler=tools_command)
     )
     registry.register(
@@ -835,7 +1176,19 @@ def register_builtin_commands(registry: CommandRegistry) -> None:
         Command(name="agent", description="Show or switch the active agent", handler=agent_command)
     )
     registry.register(
+        Command(name="provider", description="Show or switch the active provider", handler=provider_command)
+    )
+    registry.register(
         Command(name="model", description="Show or override the current model", handler=model_command)
+    )
+    registry.register(
+        Command(name="reasoning", description="Show or toggle public reasoning mode", handler=reasoning_command)
+    )
+    registry.register(
+        Command(name="stream", description="Show or toggle streaming output", handler=stream_command)
+    )
+    registry.register(
+        Command(name="timeout", description="Show or override the active timeout", handler=timeout_command)
     )
     registry.register(
         Command(name="pwd", description="Print current working directory", handler=pwd_command)
@@ -912,6 +1265,12 @@ def register_builtin_commands(registry: CommandRegistry) -> None:
     )
     registry.register(
         Command(name="task", description="Show one task or list tasks", handler=task_command)
+    )
+    registry.register(
+        Command(name="cancel", description="Cancel a background task", handler=cancel_command)
+    )
+    registry.register(
+        Command(name="task-clear", description="Clear completed or failed tasks", handler=task_clear_command)
     )
     registry.register(
         Command(
