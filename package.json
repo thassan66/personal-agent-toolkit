@@ -1,0 +1,36 @@
+{
+  "name": "personal-agent-toolkit",
+  "version": "0.1.0",
+  "description": "A local-first Python CLI for personal coding agents and operator-style terminal workflows",
+  "license": "MIT",
+  "bin": {
+    "personal-agent-toolkit": "bin/personal-agent-toolkit.js"
+  },
+  "files": [
+    "bin/",
+    "docs/",
+    "mcp_servers/",
+    "personal_agent_toolkit/",
+    "plugins/",
+    "skills/",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "agent",
+    "cli",
+    "llm",
+    "ollama",
+    "python",
+    "terminal"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "postinstall": "node bin/postinstall.js"
+  },
+  "repository": {
+    "type": "git"
+  }
+}
