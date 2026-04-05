@@ -9,6 +9,12 @@ This folder contains public-facing documentation assets for the repository.
 - `demo-editing.gif`
 - `demo-hud-streaming.gif`
 
+Current terminal-style demo assets in this repo can be regenerated with:
+
+```powershell
+python .\scripts\generate_demo_assets.py
+```
+
 You can record these with:
 
 - terminal screen capture tools

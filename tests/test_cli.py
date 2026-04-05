@@ -12,6 +12,7 @@ from personal_agent_toolkit.__main__ import (
     _build_prompt,
     _build_prompt_with_context,
     CONFIG_FILE_NAME,
+    _render_rich_text,
     _render_repl_welcome,
     create_engine,
     main,
@@ -120,6 +121,27 @@ class CliRenderingTests(unittest.TestCase):
             ),
             "[planner|deepseek-r1:14b+r] > ",
         )
+
+    def test_render_rich_text_formats_sections_bullets_and_code(self) -> None:
+        raw = "\n".join(
+            [
+                "## Plan",
+                "- Step one",
+                "- Step two",
+                "",
+                "```python",
+                "print('hello')",
+                "```",
+            ]
+        )
+
+        rendered = _render_rich_text(raw, color_enabled=False)
+
+        self.assertIn("PLAN", rendered)
+        self.assertIn("• Step one", rendered)
+        self.assertIn("• Step two", rendered)
+        self.assertIn("Code (python):", rendered)
+        self.assertIn("    print('hello')", rendered)
 
     def test_help_command_groups_commands(self) -> None:
         engine = create_engine(workspace=REPO_ROOT)

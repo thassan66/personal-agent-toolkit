@@ -291,6 +291,52 @@ def _truncate(text: str, limit: int = 56) -> str:
     return text[: limit - 3] + "..."
 
 
+def _render_rich_text(text: str, *, color_enabled: bool) -> str:
+    lines = text.splitlines()
+    rendered: list[str] = []
+    in_code_block = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            if in_code_block:
+                language = stripped[3:].strip()
+                header = f"Code{f' ({language})' if language else ''}:"
+                rendered.append(_paint(header, "accent", enabled=color_enabled))
+            continue
+
+        if in_code_block:
+            rendered.append(_paint(f"    {line}", "muted", enabled=color_enabled))
+            continue
+
+        if stripped.startswith("### "):
+            rendered.append("")
+            rendered.append(_paint(stripped[4:].upper(), "strong", enabled=color_enabled))
+            continue
+        if stripped.startswith("## "):
+            rendered.append("")
+            rendered.append(_paint(stripped[3:].upper(), "strong", enabled=color_enabled))
+            continue
+        if stripped.startswith("# "):
+            rendered.append("")
+            rendered.append(_paint(stripped[2:].upper(), "strong", enabled=color_enabled))
+            continue
+        if stripped.startswith(("- ", "* ")):
+            rendered.append(f"  • {stripped[2:]}")
+            continue
+        if stripped and stripped[0].isdigit() and ". " in stripped:
+            rendered.append(f"  {stripped}")
+            continue
+        if stripped.endswith(":") and len(stripped) < 60:
+            rendered.append(_paint(line, "accent", enabled=color_enabled))
+            continue
+        rendered.append(line)
+
+    result = "\n".join(rendered).strip("\n")
+    return result or text
+
+
 def _preview_mapping(payload: dict[str, Any]) -> str:
     keys = ("path", "root", "pattern", "query", "command", "name", "agent", "uri", "task_id")
     parts: list[str] = []
@@ -620,7 +666,7 @@ async def run_repl(
             if not stream_state["content_started"]:
                 print(_paint("Answer:", "success", enabled=color_enabled))
                 stream_state["content_started"] = True
-            print(text, end="", flush=True)
+            print(_render_rich_text(text, color_enabled=color_enabled), end="", flush=True)
             stream_state["streamed_content"] = True
             return
         if kind == "assistant_completed" and (
@@ -698,7 +744,7 @@ async def run_repl(
                 )
                 continue
             if result and not stream_state["streamed_content"]:
-                print(result)
+                print(_render_rich_text(result, color_enabled=color_enabled))
     finally:
         if readline_module is not None and history_path is not None:
             try:
