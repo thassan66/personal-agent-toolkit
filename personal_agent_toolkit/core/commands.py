@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import shlex
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Dict, Iterable, Optional
@@ -37,7 +38,7 @@ class CommandRegistry:
             return None
         parts = shlex.split(raw[1:])
         if not parts:
-            return "empty command"
+            return "empty command. type /help to list commands"
         engine = getattr(ctx, "engine", None)
         plugins = getattr(engine, "plugins", None)
         if plugins is not None:
@@ -49,7 +50,12 @@ class CommandRegistry:
             )
         cmd = self._commands.get(parts[0])
         if not cmd:
-            return f"unknown command: /{parts[0]}"
+            lines = [f"unknown command: /{parts[0]}"]
+            suggestion = difflib.get_close_matches(parts[0], self._commands.keys(), n=1, cutoff=0.5)
+            if suggestion:
+                lines.append(f"did you mean /{suggestion[0]}?")
+            lines.append("type /help to list commands")
+            return "\n".join(lines)
         result = await cmd.handler(parts[1:], ctx)
         if plugins is not None:
             await plugins.run_hooks(

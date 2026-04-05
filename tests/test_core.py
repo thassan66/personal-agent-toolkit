@@ -25,7 +25,7 @@ class ScriptedProvider:
     def __init__(self, responses):
         self._responses = list(responses)
 
-    async def complete(self, messages, *, model, tools=None):
+    async def complete(self, messages, *, model, tools=None, stream_handler=None):
         return self._responses.pop(0)
 
 

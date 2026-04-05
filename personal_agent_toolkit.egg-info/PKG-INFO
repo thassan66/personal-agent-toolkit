@@ -114,6 +114,12 @@ Interactive mode:
 python -m personal_agent_toolkit
 ```
 
+Private local-model mode:
+
+```powershell
+python -m personal_agent_toolkit --provider ollama --local-profile balanced
+```
+
 ---
 
 ## Demo
@@ -232,6 +238,39 @@ python -m personal_agent_toolkit
 ```
 
 Use `openai-compatible` when you want to connect to other hosted model gateways or local proxies that expose `/chat/completions`.
+
+### Local coding setup
+
+For a private local setup, use the new local profile flags:
+
+```powershell
+python -m personal_agent_toolkit --provider ollama --local-profile balanced
+python -m personal_agent_toolkit --provider ollama --local-profile reasoning
+python -m personal_agent_toolkit --provider ollama --local-profile agentic
+```
+
+Recommended starting profiles:
+
+- `balanced` -> `qwen2.5-coder:14b`
+- `reasoning` -> `deepseek-r1:14b`
+- `agentic` -> `devstral:24b`
+
+There is also a Windows bootstrap helper that sets the right local environment variables and optionally pulls the model:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-local-agent.ps1 -Profile balanced -Pull
+```
+
+Other local OpenAI-style servers are supported through provider aliases:
+
+```powershell
+python -m personal_agent_toolkit --provider lm-studio --model qwen2.5-coder:14b
+python -m personal_agent_toolkit --provider llama.cpp --model qwen2.5-coder:14b
+```
+
+See also:
+
+- [Local model setup](docs/local-model-setup.md)
 
 ### One-off model override
 
