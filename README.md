@@ -225,9 +225,9 @@ The runtime currently supports:
 
 - `echo` for smoke testing
 - `anthropic` / `claude` for native Claude access
+- `ollama` for the native Ollama `/api/chat` endpoint
 - `openai` for the official OpenAI API
 - `gemini` / `google` for Google's OpenAI-compatible Gemini endpoint
-- `ollama` for a local OpenAI-compatible Ollama server
 - `openai-compatible` for any other OpenAI-style endpoint or proxy
 
 ### Environment variables
@@ -285,6 +285,8 @@ python -m personal_agent_toolkit
 ```
 
 Use `openai-compatible` when you want to connect to other hosted model gateways or local proxies that expose `/chat/completions`.
+
+Use `ollama` when you want the CLI to talk to Ollama directly through its native API for better local-model compatibility.
 
 ### Local coding setup
 

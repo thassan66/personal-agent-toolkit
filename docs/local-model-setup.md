@@ -1,6 +1,6 @@
 # Local Model Setup
 
-This toolkit already supports local OpenAI-compatible backends. The easiest private setup is `ollama`.
+This toolkit supports local model backends directly. The easiest private setup is `ollama`.
 
 ## Recommended local profiles
 

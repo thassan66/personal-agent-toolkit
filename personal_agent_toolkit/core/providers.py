@@ -64,6 +64,13 @@ def _format_http_error(prefix: str, exc: urllib.error.HTTPError, guidance: str) 
     return RuntimeError(message)
 
 
+def _normalize_ollama_base_url(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/v1"):
+        return normalized[:-3]
+    return normalized
+
+
 class OpenAICompatibleProvider:
     def __init__(
         self,
@@ -279,6 +286,171 @@ class OpenAICompatibleProvider:
             )
         return RuntimeError(
             f"{provider} timed out while waiting for a response. Retry with a longer `--timeout` value."
+        )
+
+
+class OllamaProvider:
+    def __init__(self, *, base_url: str, api_key: str, timeout: float = 300.0) -> None:
+        self.base_url = _normalize_ollama_base_url(base_url)
+        self.api_key = api_key
+        self.timeout = timeout
+        self.provider_label = "ollama"
+
+    async def complete(
+        self,
+        messages: list[Message],
+        *,
+        model: str,
+        tools: Optional[list[ToolSpec]] = None,
+        stream_handler: Optional[Callable[[dict[str, Any]], None]] = None,
+    ) -> CompletionResponse:
+        return await asyncio.to_thread(self._complete_sync, messages, model, tools, stream_handler)
+
+    def _complete_sync(
+        self,
+        messages: list[Message],
+        model: str,
+        tools: Optional[list[ToolSpec]],
+        stream_handler: Optional[Callable[[dict[str, Any]], None]] = None,
+    ) -> CompletionResponse:
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": self._normalize_messages(messages),
+            "stream": bool(stream_handler),
+        }
+        if tools:
+            payload["tools"] = tools
+
+        req = urllib.request.Request(
+            url=f"{self.base_url}/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
+                if stream_handler is not None:
+                    return self._consume_streaming_response(resp, stream_handler)
+                data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise self._translate_http_error(exc, model=model) from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(
+                f"Could not reach Ollama at {self.base_url}. Start Ollama and confirm the model `{model}` is installed."
+            ) from exc
+        except TimeoutError as exc:
+            raise RuntimeError(
+                f"Ollama timed out while generating with `{model}`. The model is likely still loading or generating. "
+                "Retry with a longer timeout such as `--timeout 300`, or use a smaller/faster model."
+            ) from exc
+        except socket.timeout as exc:
+            raise RuntimeError(
+                f"Ollama timed out while generating with `{model}`. The model is likely still loading or generating. "
+                "Retry with a longer timeout such as `--timeout 300`, or use a smaller/faster model."
+            ) from exc
+        return self._parse_response(data)
+
+    def _normalize_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for message in messages:
+            role = str(message.get("role", "user"))
+            entry: dict[str, Any] = {"role": role}
+            if role == "assistant":
+                entry["content"] = str(message.get("content", ""))
+                tool_calls = []
+                for call in message.get("tool_calls", []) or []:
+                    tool_calls.append(
+                        {
+                            "function": {
+                                "name": call.get("name", "unknown_tool"),
+                                "arguments": call.get("arguments", {}),
+                            }
+                        }
+                    )
+                if tool_calls:
+                    entry["tool_calls"] = tool_calls
+                normalized.append(entry)
+                continue
+            if role == "tool":
+                entry["content"] = str(message.get("content", ""))
+                normalized.append(entry)
+                continue
+            entry["content"] = str(message.get("content", ""))
+            normalized.append(entry)
+        return normalized
+
+    def _consume_streaming_response(
+        self,
+        resp: Any,
+        stream_handler: Callable[[dict[str, Any]], None],
+    ) -> CompletionResponse:
+        role = "assistant"
+        content_parts: list[str] = []
+        tool_calls: list[dict[str, Any]] = []
+
+        for raw_line in resp:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            payload = json.loads(line)
+            message = payload.get("message") or {}
+            if message.get("role"):
+                role = str(message["role"])
+            thinking = message.get("thinking")
+            if thinking:
+                stream_handler({"kind": "thinking_delta", "text": str(thinking)})
+            content = message.get("content")
+            if content:
+                text = str(content)
+                content_parts.append(text)
+                stream_handler({"kind": "content_delta", "text": text})
+            chunk_tool_calls = self._parse_tool_calls(message.get("tool_calls") or [])
+            if chunk_tool_calls:
+                tool_calls.extend(chunk_tool_calls)
+            if payload.get("done"):
+                break
+
+        return CompletionResponse(
+            role=role,
+            content="".join(content_parts),
+            tool_calls=tool_calls,
+        )
+
+    def _parse_response(self, payload: dict[str, Any]) -> CompletionResponse:
+        message = payload.get("message") or {}
+        return CompletionResponse(
+            role=str(message.get("role", "assistant")),
+            content=str(message.get("content", "")),
+            tool_calls=self._parse_tool_calls(message.get("tool_calls") or []),
+        )
+
+    def _parse_tool_calls(self, raw_tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        parsed: list[dict[str, Any]] = []
+        for index, call in enumerate(raw_tool_calls):
+            function = call.get("function") or {}
+            parsed.append(
+                {
+                    "id": function.get("name", f"tool_call_{index}"),
+                    "name": function.get("name", "unknown_tool"),
+                    "arguments": function.get("arguments", {}),
+                }
+            )
+        return parsed
+
+    def _translate_http_error(self, exc: urllib.error.HTTPError, *, model: str) -> RuntimeError:
+        if exc.code == 404:
+            return _format_http_error(
+                "Ollama request failed",
+                exc,
+                f"Start Ollama, confirm the server is reachable at {self.base_url}, and pull the model with `ollama pull {model}`.",
+            )
+        return _format_http_error(
+            "Ollama request failed",
+            exc,
+            "Check your Ollama server, model name, and request options.",
         )
 
 

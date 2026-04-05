@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from personal_agent_toolkit.__main__ import _resolve_local_profile_model, create_provider, main
 from personal_agent_toolkit.core.providers import AnthropicProvider
-from personal_agent_toolkit.core.providers import EchoProvider, OpenAICompatibleProvider
+from personal_agent_toolkit.core.providers import EchoProvider, OllamaProvider, OpenAICompatibleProvider
 
 
 class AnthropicProviderTests(unittest.TestCase):
@@ -135,13 +135,12 @@ class OpenAICompatibleProviderTests(unittest.TestCase):
         )
 
     def test_ollama_http_404_is_translated(self) -> None:
-        provider = OpenAICompatibleProvider(
-            base_url="http://localhost:11434/v1",
+        provider = OllamaProvider(
+            base_url="http://localhost:11434",
             api_key="dummy",
-            provider_label="ollama",
         )
         error = urllib.error.HTTPError(
-            url="http://localhost:11434/v1/chat/completions",
+            url="http://localhost:11434/api/chat",
             code=404,
             msg="Not Found",
             hdrs=None,
@@ -153,10 +152,9 @@ class OpenAICompatibleProviderTests(unittest.TestCase):
                 provider._complete_sync([], model="qwen2.5-coder:14b", tools=None)  # noqa: SLF001
 
     def test_ollama_url_error_is_translated(self) -> None:
-        provider = OpenAICompatibleProvider(
-            base_url="http://localhost:11434/v1",
+        provider = OllamaProvider(
+            base_url="http://localhost:11434",
             api_key="dummy",
-            provider_label="ollama",
         )
 
         with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("connection refused")):
@@ -164,15 +162,61 @@ class OpenAICompatibleProviderTests(unittest.TestCase):
                 provider._complete_sync([], model="qwen2.5-coder:14b", tools=None)  # noqa: SLF001
 
     def test_ollama_timeout_is_translated(self) -> None:
-        provider = OpenAICompatibleProvider(
-            base_url="http://localhost:11434/v1",
+        provider = OllamaProvider(
+            base_url="http://localhost:11434",
             api_key="dummy",
-            provider_label="ollama",
         )
 
         with patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
             with self.assertRaisesRegex(RuntimeError, "--timeout 300"):
                 provider._complete_sync([], model="qwen2.5-coder:3b", tools=None)  # noqa: SLF001
+
+
+class OllamaProviderTests(unittest.TestCase):
+    def test_ollama_provider_streams_native_chat_chunks(self) -> None:
+        provider = OllamaProvider(
+            base_url="http://localhost:11434",
+            api_key="dummy",
+        )
+        streamed: list[dict[str, str]] = []
+
+        class FakeStreamingResponse:
+            def __init__(self, lines: list[bytes]) -> None:
+                self._lines = lines
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+            def __iter__(self):
+                return iter(self._lines)
+
+        response = FakeStreamingResponse(
+            [
+                b'{"model":"deepseek-r1:14b","message":{"role":"assistant","thinking":"plan","content":"Hello"},"done":false}\n',
+                b'{"model":"deepseek-r1:14b","message":{"role":"assistant","content":" world"},"done":true}\n',
+            ]
+        )
+
+        with patch("urllib.request.urlopen", return_value=response):
+            result = provider._complete_sync(  # noqa: SLF001
+                [],
+                model="deepseek-r1:14b",
+                tools=None,
+                stream_handler=streamed.append,
+            )
+
+        self.assertEqual(result.content, "Hello world")
+        self.assertEqual(
+            streamed,
+            [
+                {"kind": "thinking_delta", "text": "plan"},
+                {"kind": "content_delta", "text": "Hello"},
+                {"kind": "content_delta", "text": " world"},
+            ],
+        )
 
 
 class CreateProviderTests(unittest.TestCase):
@@ -234,9 +278,9 @@ class CreateProviderTests(unittest.TestCase):
         ):
             provider = create_provider()
 
-        self.assertIsInstance(provider, OpenAICompatibleProvider)
+        self.assertIsInstance(provider, OllamaProvider)
         self.assertEqual(provider.api_key, "dummy")  # noqa: SLF001
-        self.assertEqual(provider.base_url, "http://localhost:11434/v1")  # noqa: SLF001
+        self.assertEqual(provider.base_url, "http://localhost:11434")  # noqa: SLF001
         self.assertEqual(provider.timeout, 300.0)  # noqa: SLF001
 
     def test_create_provider_respects_env_timeout_for_ollama(self) -> None:
@@ -250,13 +294,13 @@ class CreateProviderTests(unittest.TestCase):
         ):
             provider = create_provider()
 
-        self.assertIsInstance(provider, OpenAICompatibleProvider)
+        self.assertIsInstance(provider, OllamaProvider)
         self.assertEqual(provider.timeout, 45.0)  # noqa: SLF001
 
     def test_create_provider_respects_explicit_timeout_for_ollama(self) -> None:
         provider = create_provider(provider_name="ollama", timeout=90)
 
-        self.assertIsInstance(provider, OpenAICompatibleProvider)
+        self.assertIsInstance(provider, OllamaProvider)
         self.assertEqual(provider.timeout, 90)  # noqa: SLF001
 
     def test_create_provider_uses_lm_studio_defaults(self) -> None:
